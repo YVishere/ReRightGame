@@ -131,6 +131,19 @@ public class DialogManager : MonoBehaviour
         if (isAi){
             yield return StartCoroutine(waitForInput());
             string userText = userInput.text;
+            
+            // Check if user input is empty or whitespace - end dialog if so
+            if (string.IsNullOrEmpty(userText.Trim())){
+                // End dialog instead of continuing with empty input
+                currentLine = 0;
+                dialogBox.SetActive(false);
+                userInput.gameObject.SetActive(false);
+                isShowing = false;
+                onFinish?.Invoke();
+                OnCloseDialog?.Invoke();
+                yield break; // Exit without recursion to prevent empty string backend calls
+            }
+            
             dialogObj.append(userText); //Stacking user text
             yield return StartCoroutine(ShowDialog(dialogObj, npcID, onFinish, isAi));
         }
