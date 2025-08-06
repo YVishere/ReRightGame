@@ -50,7 +50,13 @@ Configure these tags in Unity's Tag Manager:
    - Integrates with collision detection system
    - Manages movement state and coordination
 
-5. **LLM_NPCController** - *AI integration controller* (**NPC_AI only**)
+5. **CollisionDetector** - *Movement collision detection*
+   - Prevents NPCs from walking into obstacles or other characters
+   - Manages collision state for movement coordination
+   - Essential for proper NPC pathfinding and movement validation
+   - Works with CharacterMove to ensure smooth navigation
+
+6. **LLM_NPCController** - *AI integration controller* (**NPC_AI only**)
    - Required only for NPCs with `NPC_AI` tag
    - Manages LLM communication and response generation
    - Not needed for standard scripted NPCs with `NPC` tag
@@ -163,6 +169,13 @@ Configure these tags in Unity's Tag Manager:
 - Manages sprite sequences for each movement direction
 - Coordinates with movement system for state synchronization
 - Provides visual feedback for character direction and movement
+
+#### CollisionDetector
+**Purpose**: Movement collision detection system for NPCs
+- Prevents NPCs from walking into obstacles, walls, or other characters
+- Manages collision state flags for movement coordination
+- Integrates with CharacterMove to validate movement paths
+- Essential for proper NPC navigation and pathfinding behavior
 
 ### NPC-Specific Components
 
