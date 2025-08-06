@@ -74,7 +74,7 @@ When you identify documentation improvements, create entries in:
 **File**: `ReadmeTodo.md` (at project root level)
 
 #### Step 3: Implementation
-Only after logging your analysis should you proceed with any  modifications.
+Only after logging your analysis should you proceed with any documentation modifications.
 
 ## Critical Guidelines
 
@@ -95,6 +95,9 @@ Only after logging your analysis should you proceed with any  modifications.
 - **Performance Considerations**: Optimization strategies and bottlenecks
 - **Error Handling**: Exception handling and recovery mechanisms
 - **Scalability**: How systems handle growth and increased load
+
+## Forbidden Actions
+- **DO NOT** change file stucture. Maintain the sructure mentioned in the folder's README docs.
 
 ## Expected Deliverables
 1. **Comprehensive Logging**: Detailed logs in all relevant logging files
