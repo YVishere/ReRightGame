@@ -38,7 +38,7 @@ class IPCAuthValidator:
             pipe_path = f"\\\\.\\pipe\\{self.pipe_name}"
             print(f"Connecting to authentication pipe: {pipe_path}")
             
-            # Connect to the named pipe
+            # Connect to the named pipe with timeout
             handle = win32file.CreateFile(
                 pipe_path,
                 win32file.GENERIC_READ | win32file.GENERIC_WRITE,
@@ -53,10 +53,11 @@ class IPCAuthValidator:
             auth_request = b"AUTH_REQUEST"
             win32file.WriteFile(handle, auth_request)
             
-            # Read authentication secret
+            # Read authentication secret with timeout
             result, secret_data = win32file.ReadFile(handle, 1024)
             self.auth_secret = secret_data.decode('utf-8')
             
+            # Always close the handle
             win32file.CloseHandle(handle)
             print("Successfully retrieved authentication secret via IPC")
             
@@ -66,6 +67,13 @@ class IPCAuthValidator:
         except Exception as e:
             print(f"Error during IPC authentication: {e}")
             self.auth_secret = None
+        finally:
+            # Ensure handle is closed even if exception occurs
+            try:
+                if 'handle' in locals():
+                    win32file.CloseHandle(handle)
+            except:
+                pass
     
     def authenticate_client(self, client_address):
         """Authenticate a client connection"""

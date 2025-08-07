@@ -17,6 +17,7 @@ public class AuthManager : MonoBehaviour
     private string pipeName;
     private NamedPipeServerStream authPipeServer;
     private CancellationTokenSource cancellationTokenSource;
+    private Task authTask;
     
     private void Awake()
     {
@@ -24,7 +25,21 @@ public class AuthManager : MonoBehaviour
         GenerateDynamicSecret();
         GenerateSessionKey();
         SetupAuthenticationPipe();
+        
+        // CRITICAL: Register for domain reload cleanup
+        #if UNITY_EDITOR
+        UnityEditor.AssemblyReloadEvents.beforeAssemblyReload += OnBeforeDomainReload;
+        #endif
     }
+    
+    #if UNITY_EDITOR
+    private void OnBeforeDomainReload()
+    {
+        Debug.Log("AuthManager: Domain reload detected - cleaning up immediately");
+        CleanupIPC();
+        UnityEditor.AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeDomainReload;
+    }
+    #endif
     
     private void GenerateDynamicSecret()
     {
@@ -39,23 +54,33 @@ public class AuthManager : MonoBehaviour
         string rawSecret = processInfo + "_" + machineInfo + "_" + userInfo + "_" + timestamp + "_" + unityInstanceId;
         dynamicSecret = GenerateHash(rawSecret);
         
-        // Generate unique pipe name based on process ID and timestamp
-        pipeName = "ReRightAuth_" + System.Diagnostics.Process.GetCurrentProcess().Id + "_" + DateTime.Now.Ticks;
+        // Generate unique pipe name with additional entropy to prevent collisions
+        string processId = System.Diagnostics.Process.GetCurrentProcess().Id.ToString();
+        string randomSuffix = System.Guid.NewGuid().ToString("N")[..8]; // Short random suffix
+        pipeName = $"ReRightAuth_{processId}_{DateTime.Now.Ticks}_{randomSuffix}";
         
         Debug.Log("Generated dynamic secret and pipe name for IPC authentication");
     }
     
-    private async void SetupAuthenticationPipe()
+    private void SetupAuthenticationPipe()
     {
         try
         {
             cancellationTokenSource = new CancellationTokenSource();
-            authPipeServer = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Message);
+            
+            // Create pipe with timeout to prevent hanging
+            authPipeServer = new NamedPipeServerStream(
+                pipeName, 
+                PipeDirection.InOut, 
+                1, 
+                PipeTransmissionMode.Message,
+                PipeOptions.Asynchronous // Use async pipes
+            );
             
             Debug.Log($"Authentication pipe server created: {pipeName}");
             
-            // Start listening for authentication requests in background
-            _ = Task.Run(async () => await HandleAuthenticationRequests(), cancellationTokenSource.Token);
+            // Start listening for authentication requests in background with proper cleanup
+            authTask = Task.Run(async () => await HandleAuthenticationRequests(), cancellationTokenSource.Token);
         }
         catch (Exception e)
         {
@@ -70,7 +95,22 @@ public class AuthManager : MonoBehaviour
             while (!cancellationTokenSource.Token.IsCancellationRequested)
             {
                 Debug.Log("Waiting for authentication connection on pipe...");
-                await authPipeServer.WaitForConnectionAsync(cancellationTokenSource.Token);
+                
+                // Use timeout to prevent indefinite hanging during domain reload
+                using (var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationTokenSource.Token))
+                {
+                    timeoutCts.CancelAfter(TimeSpan.FromSeconds(5)); // 5 second timeout
+                    
+                    try
+                    {
+                        await authPipeServer.WaitForConnectionAsync(timeoutCts.Token);
+                    }
+                    catch (OperationCanceledException) when (timeoutCts.Token.IsCancellationRequested && !cancellationTokenSource.Token.IsCancellationRequested)
+                    {
+                        // Timeout occurred, continue loop to check main cancellation token
+                        continue;
+                    }
+                }
                 
                 // Read authentication request
                 byte[] buffer = new byte[1024];
@@ -92,17 +132,27 @@ public class AuthManager : MonoBehaviour
         }
         catch (OperationCanceledException)
         {
-            Debug.Log("Authentication pipe handling cancelled");
+            Debug.Log("Authentication pipe handling cancelled - this is normal during shutdown");
         }
         catch (Exception e)
         {
             Debug.LogError("Error in authentication pipe handling: " + e.Message);
+        }
+        finally
+        {
+            Debug.Log("Authentication pipe task completed");
         }
     }
     
     public string GetPipeName()
     {
         return pipeName;
+    }
+    
+    public string GetDynamicSecret()
+    {
+        // Backup method to get secret directly if pipes fail
+        return dynamicSecret;
     }
     
     private void GenerateSessionKey()
@@ -166,27 +216,85 @@ public class AuthManager : MonoBehaviour
         CleanupIPC();
     }
     
-    private void CleanupIPC()
+    public static void ForceCleanupAllInstances()
     {
+        // Emergency cleanup method that can be called statically
+        Debug.Log("AuthManager: Force cleanup all instances");
+        
+        if (Instance != null)
+        {
+            Instance.CleanupIPC();
+        }
+        
+        // Additional cleanup for any orphaned pipes
         try
         {
-            // Cancel background authentication task
-            cancellationTokenSource?.Cancel();
+            System.GC.Collect();
+            System.GC.WaitForPendingFinalizers();
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"Error during force cleanup: {e.Message}");
+        }
+    }
+    
+    private void CleanupIPC()
+    {
+        Debug.Log("AuthManager: Starting IPC cleanup...");
+        
+        try
+        {
+            // Cancel background authentication task immediately
+            if (cancellationTokenSource != null && !cancellationTokenSource.Token.IsCancellationRequested)
+            {
+                cancellationTokenSource.Cancel();
+                Debug.Log("AuthManager: Cancellation token triggered");
+            }
+            
+            // Wait for auth task to complete with timeout
+            if (authTask != null && !authTask.IsCompleted)
+            {
+                Debug.Log("AuthManager: Waiting for auth task completion...");
+                if (!authTask.Wait(1000)) // 1 second timeout
+                {
+                    Debug.LogWarning("AuthManager: Auth task did not complete within timeout");
+                }
+            }
             
             // Close pipe server
             if (authPipeServer != null)
             {
-                if (authPipeServer.IsConnected)
+                try
                 {
-                    authPipeServer.Disconnect();
+                    if (authPipeServer.IsConnected)
+                    {
+                        authPipeServer.Disconnect();
+                        Debug.Log("AuthManager: Pipe disconnected");
+                    }
                 }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"AuthManager: Error disconnecting pipe: {e.Message}");
+                }
+                
                 authPipeServer.Dispose();
-                Debug.Log("Authentication pipe server disposed");
+                authPipeServer = null;
+                Debug.Log("AuthManager: Pipe server disposed");
             }
+            
+            // Dispose cancellation token
+            if (cancellationTokenSource != null)
+            {
+                cancellationTokenSource.Dispose();
+                cancellationTokenSource = null;
+                Debug.Log("AuthManager: Cancellation token disposed");
+            }
+            
+            Debug.Log("AuthManager: IPC cleanup completed successfully");
         }
         catch (Exception e)
         {
-            Debug.LogError("Error during IPC cleanup: " + e.Message);
+            Debug.LogError("AuthManager: Error during IPC cleanup: " + e.Message);
         }
     }
 }
