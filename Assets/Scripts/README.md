@@ -99,6 +99,13 @@ The game operates on a client-server architecture where Unity (C#) handles game 
 - Extended server communication protocols
 - Additional network service integrations
 
+### `/UnityEngineHelper`
+**Unity Editor integration utilities** for development workflow enhancement.
+- Domain reload management and resource cleanup
+- Editor-specific development tools and utilities
+- Development-time workflow support and debugging tools
+- **DomainReloadHelper**: Prevents editor hanging during assembly reloads by managing IPC and network resource cleanup
+
 ## Technical Design Patterns
 
 ### Singleton Pattern

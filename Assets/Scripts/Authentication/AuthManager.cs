@@ -94,7 +94,7 @@ public class AuthManager : MonoBehaviour
         {
             while (!cancellationTokenSource.Token.IsCancellationRequested)
             {
-                Debug.Log("Waiting for authentication connection on pipe...");
+                // Debug.Log("Waiting for authentication connection on pipe...");
                 
                 // Use timeout to prevent indefinite hanging during domain reload
                 using (var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationTokenSource.Token))

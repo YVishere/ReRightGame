@@ -43,4 +43,51 @@ This file is used by agentic models to log analysis, observations, and insights 
 
 ---
 
+## [2025-08-08 13:10] - GitHub Copilot - Python Server Process Lifecycle Analysis
+**Component**: ServerSocketC.cs, ServerSocketPython.py - Process and connection management
+**Observation**: Analyzed Python server process lifecycle and connection cleanup to address console persistence after Unity game stop
+**Impact**: 
+- Python subprocess (pythonServerProcess) may continue running after Unity shutdown
+- Socket connections with pending async operations could generate delayed log outputs
+- LLM model loading and inference operations may prevent immediate Python process termination
+- Process.Kill() may not be aggressive enough to terminate all Python threads and resources
+**Recommendations**: 
+- Implement explicit Python process verification before Unity exit completion
+- Add process monitoring to detect orphaned Python server instances on startup
+- Consider implementing graceful shutdown signal to Python before using Kill()
+- Add timeout-based process termination verification with fallback force termination
+- Implement startup cleanup to remove any orphaned Python processes from previous sessions
+
+**Technical Details**:
+- pythonServerProcess.Kill() called in stopPythonServer() but may not wait for confirmation
+- Python server threads handling TCP connections may continue after main process termination
+- LLM model (llamaModelFile) resource cleanup may be asynchronous in Python
+- Socket operations in ServerSocketPython.py may have pending callbacks generating delayed logs
+
+---
+
+## [2025-08-08 13:15] - GitHub Copilot - TCP Connection Cleanup Analysis
+**Component**: ServerSocketC.cs, ConnectionInfo.cs - Network resource management
+**Observation**: Analyzed TCP connection lifecycle and cleanup sequence affecting post-shutdown console outputs
+**Impact**: 
+- Active TCP connections may have pending async operations (ReadAsync, WriteAsync) at shutdown
+- Connection cleanup sequence in Hasher may not be synchronized with server termination
+- NetworkStream operations could generate delayed callbacks after Unity game stop
+- Keep-alive socket options may prevent immediate connection termination
+**Recommendations**: 
+- Implement immediate socket shutdown with SO_LINGER = 0 for aggressive connection termination
+- Add connection state verification before declaring cleanup complete
+- Consider implementing connection timeout reduction during shutdown sequence
+- Add explicit socket handle closure verification in ConnectionInfo.Close()
+- Implement network interface flush to ensure no pending socket operations
+
+**Connection Cleanup Sequence Issues**:
+1. Hasher cleanup may happen after Python server termination
+2. ConnectionInfo.Close() may not wait for async operations to complete
+3. TcpClient.Close() may not immediately release socket handles
+4. Keep-alive settings (30s timeout) may delay connection cleanup
+5. NetworkStream disposal may be asynchronous allowing delayed callbacks
+
+---
+
 <!-- Agentic models: Add your logging entries below this line -->
