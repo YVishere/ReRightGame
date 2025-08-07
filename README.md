@@ -3,7 +3,7 @@
 A Unity-based game that leverages a local LLM (e.g., LLAMA) for NPC decision-making and dialogue, using a TCP communication layer between Unity (C#) and Python.
 
 ## Important NOTE:
-If the compile time/reloading domain time/enter play mode time are too long, then the issue is in your script, not in Unity. If certain scripts need to act in a certain way but are also causing this issues, the DomanReloadHelper.cs is an example of how you could build helper files for Unity.
+If the compile time/reloading domain time/enter play mode time are too long, then the issue is in your script, not in Unity. If certain scripts need to act in a certain way but are also causing these issues, the DomanReloadHelper.cs is an example of how you could build helper files for Unity.
 
 ---
 
@@ -63,7 +63,7 @@ If the compile time/reloading domain time/enter play mode time are too long, the
    - Ensure `sys.path` and dependencies fully loaded before listening.
 
 6. **Embedded Python**
-   - The current implementation of invoking python process relies heavily on the user having python on their path and having the needed moduules.
+   - The current implementation of invoking python process relies heavily on the user having python on their path and having the needed modules.
    - Embed python to privatise this a lot more.
    - Embedded python with python.Net increased compile time by a lot so investigate if it would still happen in this implementation.
 ---
@@ -94,5 +94,5 @@ If the compile time/reloading domain time/enter play mode time are too long, the
    cd <repo-folder>
 
 ## Notes & Pitfalls
- - Migrating to TLS/SSL might be a lot more challenging since the certificate generation only makes sense if they are dynamic and generated on a per-session basis. The current cryptography library for .NET in the Unity Engine I am using does not support this. My own approach through powershell did not work out either. Might need to even find out if I need this certificate.
+ - Migrating to TLS/SSL might be a lot more challenging since the certificate generation only makes sense if they are dynamic and generated on a per-session basis. The current cryptography library for .NET in the Unity Engine I am using does not support this. My own approach through powershell did not work out either. Might need to find out if I even need this certificate.
  - At the time of writing, do not have CONDA on your system. The system relies on python on Path but the code you write and interact with uses CONDA so basically CONDA ends up becoming a blanket that chokes you.
