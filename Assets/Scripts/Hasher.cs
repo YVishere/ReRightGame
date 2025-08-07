@@ -9,7 +9,9 @@ public class Hasher : MonoBehaviour
 {
     Dictionary<GUID, ConnectionInfo> npcHash = new Dictionary<GUID, ConnectionInfo>();
     public static Hasher Instance { get; private set; }
-    public void Awake(){
+    private bool applicationOver = false;
+    public void Awake()
+    {
         Instance = this;
     }
 
@@ -36,6 +38,7 @@ public class Hasher : MonoBehaviour
             kvp.Value.Close();
         }
         npcHash.Clear();
+        applicationOver = true;
         Debug.Log("Hasher cleared");
     }
 
@@ -43,17 +46,31 @@ public class Hasher : MonoBehaviour
     // {
     // }
 
-    public bool HashNPC(GUID npcID, TcpClient clientID){
+    public bool HashNPC(GUID npcID, TcpClient clientID)
+    {
         //Establish connection and then hash the NPC with clientID
-
-        if(!containsNPC(npcID)){
+        if (applicationOver || this == null || gameObject == null)
+        {
+            if (npcHash.Count != 0)
+            {
+                foreach (KeyValuePair<GUID, ConnectionInfo> kvp in npcHash)
+                {
+                    kvp.Value.Close();
+                }
+                npcHash.Clear();
+            }
+            return false; // Application is quitting or object is destroyed
+        }
+        if (!containsNPC(npcID))
+        {
             Debug.Log("Hashing NPC with ID: " + npcID);
             Debug.Log("Client connected: " + clientID.Connected);
-            var connInfo = new ConnectionInfo {
+            var connInfo = new ConnectionInfo
+            {
                 Client = clientID,
                 Stream = clientID.Connected ? clientID.GetStream() : null
             };
-            
+
             npcHash[npcID] = connInfo;
             return true;
         }

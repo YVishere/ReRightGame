@@ -16,8 +16,10 @@ public class ServerSocketC : MonoBehaviour
 
     public static ServerSocketC Instance { get; private set; }
 
-    private void Awake(){
-        Instance = this;     
+    private bool stopRetrying = false;
+    private void Awake()
+    {
+        Instance = this;
     }
     
     private void Start(){
@@ -51,6 +53,7 @@ public class ServerSocketC : MonoBehaviour
     // }
 
     void OnApplicationQuit(){
+        stopRetrying = true;
         stopPythonServer();
     }
 
@@ -130,6 +133,10 @@ public class ServerSocketC : MonoBehaviour
             return client;
         }
         catch (Exception e){
+            if (stopRetrying)
+            {
+                return null;
+            }
             UnityEngine.Debug.LogError("Error connecting to server: " + e.Message);
             //Ideally you would need only a second retry but just in case lets go with 3
             if (retries > 0 && doAgain){
