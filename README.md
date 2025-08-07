@@ -59,6 +59,8 @@ A Unity-based game that leverages a local LLM (e.g., LLAMA) for NPC decision-mak
    - Investigate startup race conditions causing first-connect failures.
    - Ensure `sys.path` and dependencies fully loaded before listening.
 
+6. **Some issue in CleanUp logic because closing and restarting the game is causing unity to not respond on reloading domain situations**
+   - Investigate pipe cleanup logic
 ---
 
 ## Future Improvements
