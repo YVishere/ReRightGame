@@ -14,6 +14,8 @@ The game operates on a client-server architecture where Unity (C#) handles game 
 - Delegates update calls to appropriate controllers based on current state
 - Handles transitions between free exploration and conversation modes
 - Integrates with DialogManager for seamless UI state management
+- **Required Component**: Must have AuthManager component attached for IPC authentication
+- Coordinates with AuthManager for secure AI server communication
 
 ### GameLayers.cs
 **Unity layer management system** providing centralized access to collision layers.
@@ -44,6 +46,14 @@ The game operates on a client-server architecture where Unity (C#) handles game 
 - Development-specific tooling for network troubleshooting
 
 ## Directory Structure
+
+### `/Authentication`
+**IPC-based authentication system** securing AI server communication.
+- AuthManager.cs: Manages dynamic secret generation and named pipe communication
+- Provides session-based authentication for Unity-Python server communication
+- Uses Windows named pipes for secure, in-memory credential exchange
+- **Setup Required**: AuthManager must be attached to GameController object
+- Generates unique authentication secrets per game session using system identifiers
 
 ### `/Dialogs`
 **Conversation system** managing both scripted and AI-generated conversations.
@@ -76,10 +86,12 @@ The game operates on a client-server architecture where Unity (C#) handles game 
 - Physics-based game mechanics
 
 ### `/ServerFiles`
-**Network communication layer** for Unity-Python integration.
-- Socket client implementation for AI communication
-- Connection management and request handling
-- Protocol definition for AI service communication
+**Network communication layer** for Unity-Python integration with mandatory IPC authentication.
+- Socket client implementation for AI communication with token-based authentication
+- Connection management and request handling with authentication handshakes
+- Protocol definition for AI service communication with session validation
+- **Authentication Required**: All connections must authenticate via AuthManager IPC system
+- Supports secure multi-NPC concurrent connections with individual session tokens
 
 ### `/ServerFiles-API`
 **Extended API communication** for additional server functionality.
@@ -127,5 +139,22 @@ Unity's component system enables modular character construction:
 - Ollama for local LLM inference
 - TCP socket communication layer
 - GUID system for unique entity identification
+- **Windows Named Pipes**: For secure IPC authentication between Unity and Python
+- **Python win32pipe libraries**: Required for authentication pipe communication
+
+## Authentication Setup Requirements
+
+### GameController Configuration
+1. **AuthManager Component**: Must be attached to the GameController GameObject
+2. **Initialization Order**: AuthManager initializes before ServerSocketC starts Python server
+3. **Pipe Name Generation**: Creates unique named pipe per game session
+4. **Session Management**: Generates dynamic secrets and session keys
+
+### Security Architecture
+- **Dynamic Secret Generation**: Uses Process ID, Machine Name, User Name, Timestamp, Unity Instance ID
+- **Session-Based Authentication**: Each game session generates unique authentication credentials
+- **Token Validation**: All AI requests include generated tokens for validation
+- **IPC Communication**: Secrets exchanged via Windows named pipes (in-memory only)
+- **No File System Usage**: Authentication data never written to disk
 
 This modular architecture enables scalable AI integration while maintaining clean separation between game logic, rendering, and AI processing systems.

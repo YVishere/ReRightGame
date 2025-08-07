@@ -124,22 +124,29 @@ Configure these tags in Unity's Tag Manager:
    - Coordinates between player and dialog systems
    - Handles state transitions and input routing
 
-3. **DialogManager** - *Conversation system controller*
+3. **AuthManager** - *IPC authentication system* **[CRITICAL REQUIREMENT]**
+   - Manages secure communication between Unity and Python server
+   - Generates dynamic secrets and authentication tokens
+   - Provides IPC-based credential exchange via named pipes
+   - **MUST be attached** - AI communication will fail without this component
+
+4. **DialogManager** - *Conversation system controller*
    - Singleton managing all dialog interactions
    - Handles UI presentation and user input
    - Integrates with both scripted and AI conversations
 
-4. **ServerSocketC** - *Network communication manager*
+5. **ServerSocketC** - *Network communication manager*
    - Singleton managing Python server communication
-   - Handles TCP connections for AI NPCs
+   - Handles TCP connections for AI NPCs with mandatory authentication
    - Manages server lifecycle and connection pooling
+   - **Depends on AuthManager** for all AI communications
 
-5. **Hasher** - *Connection management system*
+6. **Hasher** - *Connection management system*
    - Maps NPC GUIDs to network connections
    - Manages connection lifecycle and cleanup
    - Essential for multi-NPC AI communication
 
-6. **Killports** - *Development utility*
+7. **Killports** - *Development utility*
    - Network debugging and cleanup utility
    - Prevents port conflicts during development
    - Development-specific tooling
@@ -148,10 +155,18 @@ Configure these tags in Unity's Tag Manager:
 1. Create new GameObject named "GameController"
 2. Set tag to `GameController`
 3. Set layer to `Default`
-4. Add all required scripts
-5. Configure references in GameController script (PlayerController, Camera)
-6. Set up UI references in DialogManager (dialog box, text components)
-7. Configure layer masks in GameLayers component
+4. Add all required scripts (including **AuthManager - CRITICAL**)
+5. **Verify AuthManager is attached** - Check component is present before proceeding
+6. Configure references in GameController script (PlayerController, Camera)
+7. Set up UI references in DialogManager (dialog box, text components)
+8. Configure layer masks in GameLayers component
+9. **Test authentication setup** - Verify AuthManager initializes before ServerSocketC
+
+#### ⚠️ Critical Authentication Requirements
+- **AuthManager MUST be attached to GameController** before any AI operations
+- Game will fail to start Python server without proper AuthManager setup
+- No fallback mode available - authentication is mandatory for all AI communications
+- Initialization order: AuthManager → ServerSocketC → Python server startup
 
 ## Component Descriptions and Purposes
 
