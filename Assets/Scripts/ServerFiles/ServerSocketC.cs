@@ -17,11 +17,15 @@ public class ServerSocketC : MonoBehaviour
     public static ServerSocketC Instance { get; private set; }
 
     private void Awake(){
-        Instance = this;
+        Instance = this;     
+    }
+    
+    private void Start(){
         StartCoroutine(startSteps());       
     }
 
-    private IEnumerator startSteps(int retries = 3){
+    private IEnumerator startSteps(int retries = 3)
+    {
         startPythonServer();
         yield return new WaitForSeconds(5);
         yield return RequestDataFromServer("GetData");
@@ -54,7 +58,10 @@ public class ServerSocketC : MonoBehaviour
         try{
             pythonServerProcess = new Process();
             pythonServerProcess.StartInfo.FileName = "python";
-            pythonServerProcess.StartInfo.Arguments = "ServerSocketPython.py";
+            
+            // Pass the pipe name as argument for IPC authentication
+            string pipeName = AuthManager.Instance.GetPipeName();
+            pythonServerProcess.StartInfo.Arguments = $"ServerSocketPython.py --auth-pipe \"{pipeName}\"";
 
             //Somehow unity messes up same directory files so this line is important
             pythonServerProcess.StartInfo.WorkingDirectory = System.IO.Path.Combine(Application.dataPath, "Scripts/ServerFiles");
@@ -75,7 +82,7 @@ public class ServerSocketC : MonoBehaviour
             //     }
             // };
 
-            UnityEngine.Debug.Log("Python server started");
+            UnityEngine.Debug.Log("Python server started with IPC authentication");
         }
         catch (Exception e){
             UnityEngine.Debug.LogError("Error starting python server: " + e.Message);
@@ -110,7 +117,16 @@ public class ServerSocketC : MonoBehaviour
             
             client.Client.IOControl(IOControlCode.KeepAliveValues, inOptionValues, null);
 
-            UnityEngine.Debug.Log("Connected to server with keep-alive enabled");
+            // Perform authentication handshake
+            bool authSuccess = await AuthenticateConnection(client);
+            if (!authSuccess)
+            {
+                UnityEngine.Debug.LogError("Authentication failed");
+                client.Close();
+                return null;
+            }
+
+            UnityEngine.Debug.Log("Connected to server with keep-alive enabled and authenticated");
             return client;
         }
         catch (Exception e){
@@ -123,6 +139,48 @@ public class ServerSocketC : MonoBehaviour
             }
         }
         return null;
+    }
+    
+    private async Task<bool> AuthenticateConnection(TcpClient client)
+    {
+        try
+        {
+            NetworkStream stream = client.GetStream();
+            
+            // Send authentication request
+            string authRequest = "AUTH_REQUEST";
+            byte[] authData = Encoding.ASCII.GetBytes(authRequest);
+            await stream.WriteAsync(authData, 0, authData.Length);
+            await stream.FlushAsync();
+            
+            UnityEngine.Debug.Log("Sent authentication request to server");
+            
+            // Add a small delay to ensure server processes the auth request
+            await Task.Delay(100);
+            
+            // Receive authentication response
+            byte[] responseBuffer = new byte[1024];
+            int bytesRead = await stream.ReadAsync(responseBuffer, 0, responseBuffer.Length);
+            string authResponse = Encoding.ASCII.GetString(responseBuffer, 0, bytesRead).Trim();
+            
+            UnityEngine.Debug.Log($"Received auth response: '{authResponse}' (length: {authResponse.Length})");
+            
+            if (authResponse.StartsWith("AUTH_SUCCESS"))
+            {
+                UnityEngine.Debug.Log("Server authentication successful");
+                return true;
+            }
+            else
+            {
+                UnityEngine.Debug.LogError("Server authentication failed: " + authResponse);
+                return false;
+            }
+        }
+        catch (Exception e)
+        {
+            UnityEngine.Debug.LogError("Authentication error: " + e.Message);
+            return false;
+        }
     }
 
     private async Task RequestDataFromServer(string request){
@@ -145,15 +203,28 @@ public class ServerSocketC : MonoBehaviour
     public async Task<string> NPCRequest(string request, TcpClient client, NetworkStream stream){
         if (stream == null) return "";
 
-        byte[] data = Encoding.ASCII.GetBytes(request);
+        // Generate authentication token for this request
+        string sessionKey = AuthManager.Instance.GetSessionKey();
+        string requestToken = AuthManager.Instance.GenerateRequestToken(request);
+        string authenticatedRequest = $"TOKEN:{requestToken}|SESSION:{sessionKey}|{request}";
+
+        byte[] data = Encoding.ASCII.GetBytes(authenticatedRequest);
 
         //Todo: send data in chunks, I am just sending the first 1024 bytes for simplicity
         //TCP websocket forcibly closes connection if datalength is greater than whatever i specified in python code
-        UnityEngine.Debug.Log("Writing data to stream");
+        UnityEngine.Debug.Log("Writing authenticated data to stream");
         await stream.WriteAsync(data, 0, Math.Min(data.Length, 1023));
-        UnityEngine.Debug.Log("Request sent to server: " + request);
+        UnityEngine.Debug.Log("Authenticated request sent to server");
 
         String resp = await ReceiveResponseFromServer(stream, client);
+        
+        // Validate response
+        if (!AuthManager.Instance.ValidateResponse(resp))
+        {
+            UnityEngine.Debug.LogError("Invalid response received from server");
+            return "";
+        }
+        
         return resp;
     }
 
