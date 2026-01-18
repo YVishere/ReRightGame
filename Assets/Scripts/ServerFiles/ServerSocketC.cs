@@ -67,7 +67,7 @@ public class ServerSocketC : MonoBehaviour
             pythonServerProcess.StartInfo.Arguments = $"ServerSocketPython.py --auth-pipe \"{pipeName}\"";
 
             //Somehow unity messes up same directory files so this line is important
-            pythonServerProcess.StartInfo.WorkingDirectory = System.IO.Path.Combine(Application.dataPath, "Scripts/ServerFiles");
+            pythonServerProcess.StartInfo.WorkingDirectory = @"Assets\Scripts\ServerFiles";
 
             pythonServerProcess.StartInfo.CreateNoWindow = true;
             pythonServerProcess.StartInfo.UseShellExecute = false;
