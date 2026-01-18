@@ -6,6 +6,7 @@ using UnityEditor.Rendering.LookDev;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
+// Unity Script to act as a single point of truth for LLM model and context
 class UnityLLM : MonoBehaviour
 {
     public static UnityLLM Instance { get; private set; }
