@@ -16,7 +16,7 @@ public static class DomainReloadHelper
     
     private static void OnBeforeDomainReload()
     {
-        if (constData.USING_TCP){
+        if (constData._tcp){
             Debug.Log("DomainReloadHelper: Domain reload starting - forcing cleanup");
             
             // Force cleanup of AuthManager

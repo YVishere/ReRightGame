@@ -23,7 +23,7 @@ public class ServerSocketC : MonoBehaviour
     }
     
     private void Start(){
-        if (constData.USING_TCP){
+        if (constData._tcp){
             StartCoroutine(startSteps());   
         }    
     }
@@ -55,7 +55,7 @@ public class ServerSocketC : MonoBehaviour
     // }
 
     void OnApplicationQuit(){
-        if (constData.USING_TCP) {
+        if (constData._tcp) {
             stopRetrying = true;
             stopPythonServer();
         }

@@ -21,7 +21,7 @@ public class AuthManager : MonoBehaviour
     
     private void Awake()
     {
-        if (constData.USING_TCP){
+        if (constData._tcp){
             Instance = this;
             GenerateDynamicSecret();
             GenerateSessionKey();
@@ -37,7 +37,7 @@ public class AuthManager : MonoBehaviour
     #if UNITY_EDITOR
     private void OnBeforeDomainReload()
     {
-        if (constData.USING_TCP){
+        if (constData._tcp){
             Debug.Log("AuthManager: Domain reload detected - cleaning up immediately");
             CleanupIPC();
             UnityEditor.AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeDomainReload;
@@ -211,7 +211,7 @@ public class AuthManager : MonoBehaviour
     
     private void OnApplicationQuit()
     {
-        if (constData.USING_TCP){
+        if (constData._tcp){
             // Clean up IPC resources
             CleanupIPC();
         }
@@ -219,7 +219,7 @@ public class AuthManager : MonoBehaviour
     
     private void OnDestroy()
     {
-        if (constData.USING_TCP){
+        if (constData._tcp){
             // Clean up IPC resources
             CleanupIPC();
         }

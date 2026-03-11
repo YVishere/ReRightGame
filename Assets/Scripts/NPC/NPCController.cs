@@ -99,7 +99,7 @@ public class NPCController : MonoBehaviour, Interactable_intf
         {
             isAI = true;
             dialogBecomesContext();
-            if (constData.USING_TCP){
+            if (constData._tcp){
                 establishAndStoreConnection();
             }
         }

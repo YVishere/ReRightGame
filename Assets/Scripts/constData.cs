@@ -2,5 +2,5 @@ using UnityEngine;
 
 public class constData
 {
-    public const bool USING_TCP = false;
+    public const bool _tcp = false;
 }

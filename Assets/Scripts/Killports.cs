@@ -10,7 +10,7 @@ public class Killports : MonoBehaviour
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void OnApplicationQuit()
     {
-        if (constData.USING_TCP){
+        if (constData._tcp){
             UnityEngine.Debug.Log("Killing processes on port " + port);
             try
             {
