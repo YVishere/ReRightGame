@@ -35,7 +35,12 @@ public class LLM_NPCController : MonoBehaviour
         Debug.Log("Still connected to NPC: " + Hasher.Instance.getNPCConnection(npcID).Client.Connected);
         string conversation = reformatDialog(userSpeech);
         try{
-            string dialog = await ServerSocketC.Instance.NPCRequest(conversation, Hasher.Instance.getNPCConnection(npcID).Client, Hasher.Instance.getNPCConnection(npcID).Stream);
+            //string dialog = await ServerSocketC.Instance.NPCRequest(conversation, Hasher.Instance.getNPCConnection(npcID).Client, Hasher.Instance.getNPCConnection(npcID).Stream);
+
+            Debug.Log("Sending to LLM ----------- " + userSpeech[^1]);
+            string dialog = await UnityLLM.Instance.talk2LLM(userSpeech[^1]);
+            Debug.Log("Got back from LLM --------- " + dialog);
+
             return dialog;
         }catch (System.Exception e){
             Debug.Log(e.Message);

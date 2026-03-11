@@ -5,6 +5,11 @@ using Mono.Cecil.Cil;
 using UnityEditor.Rendering.LookDev;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using System;
+using System.Runtime.CompilerServices;
+using Unity.VisualScripting;
+using Unity.VectorGraphics.Editor;
+using UnityEngine.UI;
 
 // Unity Script to act as a single point of truth for LLM model and context
 class UnityLLM : MonoBehaviour
@@ -54,4 +59,38 @@ class UnityLLM : MonoBehaviour
     }
 
     // Add UnityLLM specific methods and properties here
+    static LLamaContext freshContext = model.CreateContext(parameters);
+    InteractiveExecutor freshExec = new InteractiveExecutor(freshContext);
+    public async Task<string> talk2LLM(string user)
+    {
+        ChatHistory cH = new ChatHistory();
+
+        cH.AddMessage(AuthorRole.System, "Give yourself a random personality and roleplay them");       
+
+
+        ChatSession session = new(freshExec, cH);
+
+        string resp = string.Empty;
+
+        if (user.Length > 0){
+            await foreach(
+                string text
+                in session.ChatAsync(new ChatHistory.Message(AuthorRole.User, user), inferenceParams)
+            )
+            {
+                resp += text;
+            }
+        }
+        else
+        {
+            await foreach(
+                string text
+                in session.ChatAsync(new ChatHistory.Message(AuthorRole.User, "Give yourself a random personality and roleplay them"), inferenceParams)
+            )
+            {
+                resp += text;
+            }
+        }
+        return resp;
+    }
 }
