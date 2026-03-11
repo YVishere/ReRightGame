@@ -16,23 +16,25 @@ public static class DomainReloadHelper
     
     private static void OnBeforeDomainReload()
     {
-        Debug.Log("DomainReloadHelper: Domain reload starting - forcing cleanup");
-        
-        // Force cleanup of AuthManager
-        AuthManager.ForceCleanupAllInstances();
-        
-        // Force cleanup of other singletons if needed
-        if (Hasher.Instance != null)
-        {
-            Hasher.Instance.SendMessage("OnApplicationQuit", SendMessageOptions.DontRequireReceiver);
+        if (constData.USING_TCP){
+            Debug.Log("DomainReloadHelper: Domain reload starting - forcing cleanup");
+            
+            // Force cleanup of AuthManager
+            AuthManager.ForceCleanupAllInstances();
+            
+            // Force cleanup of other singletons if needed
+            if (Hasher.Instance != null)
+            {
+                Hasher.Instance.SendMessage("OnApplicationQuit", SendMessageOptions.DontRequireReceiver);
+            }
+            
+            if (ServerSocketC.Instance != null)
+            {
+                ServerSocketC.Instance.SendMessage("OnApplicationQuit", SendMessageOptions.DontRequireReceiver);
+            }
+            
+            Debug.Log("DomainReloadHelper: Cleanup completed");
         }
-        
-        if (ServerSocketC.Instance != null)
-        {
-            ServerSocketC.Instance.SendMessage("OnApplicationQuit", SendMessageOptions.DontRequireReceiver);
-        }
-        
-        Debug.Log("DomainReloadHelper: Cleanup completed");
     }
     
     [MenuItem("Tools/Force Cleanup Before Domain Reload")]

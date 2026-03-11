@@ -17,7 +17,7 @@ public class NPCController : MonoBehaviour, Interactable_intf
 
     public enum NPCState { Idle, Walking, Speaking }
     CharacterMove charMove;
-
+    
     NPCState state;
     float idleTimer = 0f;
     int currentPattern = 0;
@@ -99,7 +99,9 @@ public class NPCController : MonoBehaviour, Interactable_intf
         {
             isAI = true;
             dialogBecomesContext();
-            establishAndStoreConnection();
+            if (constData.USING_TCP){
+                establishAndStoreConnection();
+            }
         }
 
     }

@@ -23,7 +23,9 @@ public class ServerSocketC : MonoBehaviour
     }
     
     private void Start(){
-        StartCoroutine(startSteps());       
+        if (constData.USING_TCP){
+            StartCoroutine(startSteps());   
+        }    
     }
 
     private IEnumerator startSteps(int retries = 3)
@@ -53,8 +55,10 @@ public class ServerSocketC : MonoBehaviour
     // }
 
     void OnApplicationQuit(){
-        stopRetrying = true;
-        stopPythonServer();
+        if (constData.USING_TCP) {
+            stopRetrying = true;
+            stopPythonServer();
+        }
     }
 
     void startPythonServer(){

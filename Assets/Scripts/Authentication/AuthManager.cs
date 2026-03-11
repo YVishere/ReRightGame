@@ -21,24 +21,29 @@ public class AuthManager : MonoBehaviour
     
     private void Awake()
     {
-        Instance = this;
-        GenerateDynamicSecret();
-        GenerateSessionKey();
-        SetupAuthenticationPipe();
-        
-        // CRITICAL: Register for domain reload cleanup
-        #if UNITY_EDITOR
-        UnityEditor.AssemblyReloadEvents.beforeAssemblyReload += OnBeforeDomainReload;
-        #endif
+        if (constData.USING_TCP){
+            Instance = this;
+            GenerateDynamicSecret();
+            GenerateSessionKey();
+            SetupAuthenticationPipe();
+            
+            // CRITICAL: Register for domain reload cleanup
+            #if UNITY_EDITOR
+            UnityEditor.AssemblyReloadEvents.beforeAssemblyReload += OnBeforeDomainReload;
+            #endif
+        }
     }
     
     #if UNITY_EDITOR
     private void OnBeforeDomainReload()
     {
-        Debug.Log("AuthManager: Domain reload detected - cleaning up immediately");
-        CleanupIPC();
-        UnityEditor.AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeDomainReload;
+        if (constData.USING_TCP){
+            Debug.Log("AuthManager: Domain reload detected - cleaning up immediately");
+            CleanupIPC();
+            UnityEditor.AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeDomainReload;
+        }
     }
+
     #endif
     
     private void GenerateDynamicSecret()
@@ -206,14 +211,18 @@ public class AuthManager : MonoBehaviour
     
     private void OnApplicationQuit()
     {
-        // Clean up IPC resources
-        CleanupIPC();
+        if (constData.USING_TCP){
+            // Clean up IPC resources
+            CleanupIPC();
+        }
     }
     
     private void OnDestroy()
     {
-        // Clean up IPC resources
-        CleanupIPC();
+        if (constData.USING_TCP){
+            // Clean up IPC resources
+            CleanupIPC();
+        }
     }
     
     public static void ForceCleanupAllInstances()
