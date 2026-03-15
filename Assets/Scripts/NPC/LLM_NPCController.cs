@@ -44,8 +44,12 @@ public class LLM_NPCController : MonoBehaviour
             else
             {
                 NPCContext_intf ctx = UnityLLMContextHasher.Instance.getNPCContext(npcID);
-                Debug.Log("Sending to LLM ----------- " + userSpeech[^1]);
-                dialog = await UnityLLM.Instance.talk2LLMWithContext(ctx, userSpeech[^1]);
+                // On the very first turn dialog.Lines = [systemPrompt] only.
+                // Sending the system prompt as a User message confuses the model;
+                // use a neutral opener so the NPC introduces itself from its personality.
+                string userMsg = userSpeech.Count == 1 ? "Hello" : userSpeech[^1];
+                Debug.Log("Sending to LLM ----------- " + userMsg);
+                dialog = await UnityLLM.Instance.talk2LLMWithContext(ctx, userMsg);
             }
             Debug.Log("Got back from LLM --------- " + dialog);
             return dialog;

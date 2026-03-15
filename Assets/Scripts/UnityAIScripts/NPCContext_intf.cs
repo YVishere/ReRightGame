@@ -9,6 +9,7 @@ public interface NPCContext_intf
     GUID NpcId { get; set; }
     ChatHistory History { get; set; }
     InteractiveExecutor Executor { get; set; }
+    ChatSession Session { get; set; }
     InferenceParams InferenceParams { get; set; }
     string SystemPrompt { get; set; }
     DateTime LastAccessed { get; set; }

@@ -56,7 +56,9 @@ class UnityLLM : MonoBehaviour
         }
         else
         {
+#pragma warning disable CS0162
             UnityEngine.Debug.Log("UnityLLM: per-NPC context mode (llama.cpp). Shared model loaded.");
+#pragma warning restore CS0162
         }
     }
 
@@ -101,13 +103,13 @@ class UnityLLM : MonoBehaviour
         );
     }
 
-    // Per-NPC inference — uses the NPC's own context so histories never bleed
+    // Per-NPC inference — reuses the single ChatSession stored on the context so the
+    // InteractiveExecutor KV cache is never replayed from scratch on each turn.
     public async Task<string> talk2LLMWithContext(NPCContext_intf ctx, string user)
     {
-        ChatSession session = new(ctx.Executor, ctx.History);
         string prompt = user.Length > 0 ? user : "Hello";
         string resp = string.Empty;
-        await foreach (string text in session.ChatAsync(new ChatHistory.Message(AuthorRole.User, prompt), ctx.InferenceParams))
+        await foreach (string text in ctx.Session.ChatAsync(new ChatHistory.Message(AuthorRole.User, prompt), ctx.InferenceParams))
         {
             resp += text;
         }

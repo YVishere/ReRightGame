@@ -9,6 +9,7 @@ public class NPCContext : NPCContext_intf
     public GUID NpcId { get; set; }
     public ChatHistory History { get; set; }
     public InteractiveExecutor Executor { get; set; }
+    public ChatSession Session { get; set; }
     public InferenceParams InferenceParams { get; set; }
     public string SystemPrompt { get; set; }
     public DateTime LastAccessed { get; set; }
@@ -18,6 +19,7 @@ public class NPCContext : NPCContext_intf
         NpcId = npcId;
         History = history;
         Executor = executor;
+        Session = new ChatSession(executor, history); // created once; reused every turn
         InferenceParams = inferenceParams;
         SystemPrompt = systemPrompt;
         LastAccessed = DateTime.Now;
@@ -35,6 +37,7 @@ public class NPCContext : NPCContext_intf
 
     public void Close()
     {
+        Session = null;
         Executor = null;
         History = null;
         Debug.Log("NPCContext closed for NPC ID: " + NpcId);
