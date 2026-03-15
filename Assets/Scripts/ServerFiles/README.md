@@ -1,4 +1,6 @@
-# ServerFiles - Network Communication Layer
+# ServerFiles - Network Communication Layer (Legacy TCP Path)
+
+> **Note**: This system is the legacy AI communication path. It is active only when `constData._tcp = true`. The primary inference path is now in `/UnityAIScripts` via LLamaSharp (llama.cpp in-process). Set `constData._tcp = false` (default) to use the llama.cpp path without starting any Python process.
 
 This directory contains the core network communication systems that enable Unity-Python integration for AI-powered NPC conversations. The system implements TCP socket communication with connection pooling and async request handling for seamless LLM integration.
 

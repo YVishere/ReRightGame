@@ -16,27 +16,29 @@ This design minimizes memory overhead while maintaining independent conversation
 
 ### UnityLLM.cs
 **Singleton model manager and single point of truth for LLM resources**
-- **Purpose**: Loads and manages the shared LLamaSharp model instance for all AI NPCs
+- **Purpose**: Loads and manages the shared LLamaSharp model instance for all AI NPCs; exposes factory and per-NPC inference methods
 - **Model Configuration**:
   - Model path: `Llama-3.2-1B-Instruct-Q4_K_M.gguf` (quantized 4-bit model)
   - Context size: 1024 tokens for conversation memory
   - GPU acceleration: 5 layers offloaded to GPU (configurable based on VRAM)
   - Model format: GGUF format from Unsloth optimized for inference
 - **Technical Details**:
-  - Static model instance (`LLamaWeights`) loaded once at initialization
+  - `model` and `parameters` are **public static** — shared across all NPCs and accessible by the factory
+  - No class-level context, executor, or chatHistory fields — all state is per-NPC
   - Singleton pattern for global LLM service access
-  - Async initialization in `Awake()` for non-blocking model loading
-  - Default context creation for testing/demonstration purposes
+  - `Awake()` is `async void` (Unity-compatible)
 - **Initialization Process**:
   - Model file loaded from StreamingAssets at startup
-  - Model parameters configured (context size, GPU layers)
-  - Test conversation executed to validate model functionality
-  - Instance reference stored for global access
+  - If `constData._tcp = true`: runs a legacy test conversation (Bob prompt) for TCP path validation
+  - If `constData._tcp = false`: logs that per-NPC context mode is active
+- **Public API**:
+  - `CreateNPCContext(GUID npcId, string systemPrompt)` — **static factory**: creates a fresh `LLamaContext`, `InteractiveExecutor`, and `ChatHistory` seeded with `systemPrompt`; returns `NPCContext`
+  - `talk2LLMWithContext(NPCContext_intf ctx, string user)` — **per-NPC inference**: builds `ChatSession` from NPC's own executor and history, streams response, updates `LastAccessed`
+  - `talk2LLM(string user)` — **legacy, `_tcp` path only**: creates a fresh shared context per call; returns `string.Empty` when `_tcp = false`
 - **Memory Management**:
   - Single model instance reduces RAM usage (vs per-NPC models)
   - Model remains loaded for application lifetime
-  - Context creation on-demand for each NPC
-  - Shared model weights across all inference operations
+  - Each NPC gets its own `LLamaContext` via factory — no shared state between NPCs
 
 ### UnityLLMContextHasher.cs
 **Context lifecycle manager with GUID-based NPC context hashing**
@@ -105,24 +107,23 @@ This design minimizes memory overhead while maintaining independent conversation
   - Timestamp tracking enables LRU cache eviction strategies
   - Null assignment prevents dangling references to heavy objects
 
-## Technical Implementation
+### Technical Implementation
 
 ### Model Loading and Initialization
 The system loads the LLM model once during application startup:
 1. **Path Resolution**: Model file located in StreamingAssets with full snapshot path
 2. **Parameter Configuration**: Context size and GPU layer allocation specified
 3. **Model Loading**: `LLamaWeights.LoadFromFile()` loads quantized GGUF model into memory
-4. **Context Creation**: Default context created from model for testing
-5. **Validation**: Test conversation executed to ensure model functionality
+4. **Validation** (TCP path only): Test conversation executed if `constData._tcp = true`
 
 ### Context Creation Workflow
-When a new AI NPC needs LLM capabilities:
-1. **Context Initialization**: Create `NPCContext` with NPC-specific configuration
-2. **Executor Assignment**: `InteractiveExecutor` created from shared model context
-3. **History Setup**: `ChatHistory` initialized with system prompt for personality
-4. **Parameter Configuration**: `InferenceParams` set with token limits and stop sequences
-5. **Context Registration**: Context hashed in `UnityLLMContextHasher` by NPC GUID
-6. **Retrieval**: NPC controller retrieves context via GUID for conversation execution
+When a new AI NPC starts (`NPCController.Start()`):
+1. `NPCController` calls `UnityLLM.CreateNPCContext(npcID, personalityPrompt)`
+2. Factory creates fresh `LLamaContext` from shared `model`, new `InteractiveExecutor`, and `ChatHistory` seeded with system prompt
+3. `NPCContext` returned and registered in `UnityLLMContextHasher` keyed by NPC GUID
+4. On player message, `LLM_NPCController.getDialog()` retrieves context by GUID and calls `talk2LLMWithContext()`
+5. `ChatSession` is created from the NPC's own executor + history — responses stay fully isolated
+6. On NPC destroy, `NPCController.OnDestroy()` calls `ctx.Close()` to release the `LLamaContext`
 
 ### Context Switching and Management
 The system supports multiple concurrent NPC conversations:

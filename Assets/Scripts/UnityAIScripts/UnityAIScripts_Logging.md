@@ -11,7 +11,62 @@ This file is used by agentic models to log analysis, observations, and insights 
 
 ---
 
-<!-- Agentic models: Add your logging entries below this line -->
+## 2026-03-15 - GitHub Copilot (Claude Sonnet 4.6) - Per-NPC Context Implementation
+
+### Component: UnityLLM.cs
+**Observation**: The two recommendations from the 2026-01-18 Model Sharing Architecture entry have been fully implemented.
+
+**Changes Made**:
+- `model` and `parameters` changed from `private static` to `public static` — accessible by factory and by NPC registration code
+- Removed shared class-level `context`, `executor`, `chatHistory`, `inferenceParams` fields — no class-level inference state remains
+- Removed static `freshContext` / `freshExec` fields — these were the root cause of shared context bleed between NPCs
+- `Awake()` changed from `async Task` to `async void` (Unity-compatible lifecycle)
+- Legacy test conversation in `Awake()` wrapped in `#pragma warning disable CS0162` + `if (constData._tcp)` guard
+- Added `CreateNPCContext(GUID npcId, string systemPrompt)` static factory
+- Added `talk2LLMWithContext(NPCContext_intf ctx, string user)` per-NPC inference method
+- `talk2LLM(string user)` body wrapped in `if (constData._tcp)` guard; returns `string.Empty` on llama.cpp path
+- Added `using UnityEditor;` for `GUID` type resolution
+
+**Impact**: Each AI NPC now has a fully isolated `LLamaContext` + `InteractiveExecutor` + `ChatHistory`. Conversation histories cannot bleed between characters. The shared model weights (`LLamaWeights`) remain loaded once for the application lifetime.
+
+---
+
+### Component: NPCController.cs
+**Observation**: NPC registration with `UnityLLMContextHasher` wired up alongside existing TCP path.
+
+**Changes Made**:
+- Added `npcPersonality` field to capture personality string from `dialogBecomesContext()`
+- `dialogBecomesContext()` now stores the personality string in `npcPersonality` before passing to `Dialog`
+- `Start()` `else` branch (when `_tcp` is `false`): calls `UnityLLM.CreateNPCContext(npcID, npcPersonality)` and `UnityLLMContextHasher.Instance.HashNPC(npcID, ctx)`
+- `OnDestroy()` branched: TCP path stops retrying, llama.cpp path calls `UnityLLMContextHasher.Instance.getNPCContext(npcID)?.Close()`
+- TCP `establishAndStoreConnection()` call wrapped with `#pragma warning disable CS0162` to suppress dead-code warning
+
+**Impact**: Every `NPC_AI`-tagged NPC registers its own context on startup and cleans it up on destroy.
+
+---
+
+### Component: LLM_NPCController.cs
+**Observation**: `getDialog()` now dispatches correctly on `constData._tcp`.
+
+**Changes Made**:
+- TCP branch: restored previously-commented-out `ServerSocketC.Instance.NPCRequest()` call via `Hasher.getNPCConnection(npcID)` + `reformatDialog()`
+- llama.cpp branch: retrieves `NPCContext_intf` from `UnityLLMContextHasher` by GUID, calls `UnityLLM.Instance.talk2LLMWithContext(ctx, userSpeech[^1])`
+- `reformatDialog()` is only invoked in the TCP branch (it produces the `Invoke:::` wire format not needed by llama.cpp's native `ChatSession`)
+
+**Impact**: Both paths compile and work. Switching `constData._tcp` is the only change needed to toggle between them.
+
+---
+
+### Component: constData.cs
+**Observation**: `USING_TCP` renamed to `_tcp` for cleaner namespacing across the codebase.
+
+**Changes Made**:
+- `public const bool USING_TCP = false;` → `public const bool _tcp = false;`
+- All 5 call sites updated: `ServerSocketC.cs`, `NPCController.cs`, `AuthManager.cs`, `DomainReloadHelper.cs`, `Killports.cs`
+
+**Impact**: Consistent naming; the `const` nature means the compiler eliminates inactive branches at compile time with zero runtime cost.
+
+---
 
 ## 2026-01-18 - Initial System Analysis
 

@@ -4,7 +4,7 @@ This directory contains the comprehensive NPC system that powers both traditiona
 
 ## Architecture Overview
 
-The NPC system implements a modular character architecture where NPCs can operate in two modes: traditional scripted behavior or AI-enhanced dynamic personalities. AI NPCs establish individual network connections to a Python LLM server, enabling unique personality-driven conversations.
+The NPC system implements a modular character architecture where NPCs can operate in two modes: traditional scripted behavior or AI-enhanced dynamic personalities. AI NPCs register a per-NPC `LLamaContext` with `UnityLLMContextHasher` on startup (llama.cpp path), or establish individual TCP connections to the Python LLM server (legacy TCP path). The active path is controlled by `constData._tcp`.
 
 ## Core Components
 
@@ -22,9 +22,10 @@ The NPC system implements a modular character architecture where NPCs can operat
   - Collision-aware interaction validation through `InteractManager` components
 - **AI Integration**:
   - Automatic AI detection via Unity tags (`NPC_AI`)
-  - Async TCP connection establishment for AI communication
+  - `npcPersonality` field captures personality string from `LLM_NPCController.generatePersonality()`
+  - **llama.cpp path** (`_tcp = false`): calls `UnityLLM.CreateNPCContext(npcID, npcPersonality)` and registers with `UnityLLMContextHasher` on `Start()`; calls `ctx.Close()` on `OnDestroy()`
+  - **TCP path** (`_tcp = true`): async TCP connection establishment via `ServerSocketC`; connection stored in `Hasher` by GUID
   - Dynamic dialog generation through `LLM_NPCController`
-  - Connection lifecycle management with proper cleanup
 - **Movement Patterns**:
   - Configurable waypoint-based walking patterns
   - Timer-controlled movement intervals for natural behavior
@@ -35,19 +36,14 @@ The NPC system implements a modular character architecture where NPCs can operat
 **AI integration controller** managing LLM communication and response generation.
 - **Purpose**: Singleton service coordinating AI personality and conversation generation
 - **Technical Details**:
-  - Conversation context formatting for LLM prompting
-  - Async communication with Python LLM server
+  - Dispatches on `constData._tcp` to select inference path
+  - Async communication with correct backend
   - Error handling and connection validation
   - Dialog history management for context-aware responses
 - **Conversation Management**:
-  - Context reformation: combines user input with conversation history
-  - Role-based dialog formatting (Player/NPC turn tracking)
+  - **llama.cpp path**: retrieves `NPCContext_intf` from `UnityLLMContextHasher` by NPC GUID; calls `UnityLLM.Instance.talk2LLMWithContext()` — history is natively maintained in the NPC's `ChatSession`
+  - **TCP path**: formats request as `Invoke:::prompt:::Context:::history` via `reformatDialog()`; sends via `ServerSocketC.NPCRequest()` using the NPC's `TcpClient` from `Hasher`
   - Personality generation for unique NPC characteristics
-  - Integration with socket communication layer
-- **Protocol Design**:
-  - Structured prompting with context and invocation separation
-  - Error propagation for network communication failures
-  - Connection state validation before requests
 
 ### Interactable_intf.cs
 **Interaction interface** defining the contract for interactive game objects.
@@ -77,12 +73,16 @@ The NPC system implements a modular character architecture where NPCs can operat
 ## Technical Implementation
 
 ### AI NPC Lifecycle
-1. **Initialization**: GUID generation and component setup
-2. **AI Detection**: Tag-based AI capability detection
-3. **Connection Establishment**: Async TCP connection to Python server
-4. **Personality Generation**: LLM-based character personality creation
-5. **Conversation Management**: Context-aware dialog generation
-6. **Cleanup**: Connection termination on object destruction
+1. **Initialization**: GUID generation and component setup in `Awake()`
+2. **AI Detection**: Tag-based AI capability detection (`NPC_AI`)
+3. **Personality Generation**: `LLM_NPCController.generatePersonality()` called; result stored in `npcPersonality` and used as system prompt
+4. **Context Registration**:
+   - `_tcp = false`: `UnityLLM.CreateNPCContext(npcID, npcPersonality)` → `UnityLLMContextHasher.HashNPC()`
+   - `_tcp = true`: async TCP connection → `Hasher.HashNPC()`
+5. **Conversation Management**: Context-aware dialog generation via `LLM_NPCController.getDialog()`
+6. **Cleanup**:
+   - `_tcp = false`: `ctx.Close()` in `OnDestroy()`
+   - `_tcp = true`: `stopRetrying = true` in `OnDestroy()`
 
 ### Interaction System
 - **Proximity Detection**: InteractManager components detect player presence
