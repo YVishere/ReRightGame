@@ -29,7 +29,7 @@ class UnityLLM : MonoBehaviour
     {
         Instance = this;
 
-        if (constData._tcp)
+        if (constData._llmDebug)
         {
 #pragma warning disable CS0162
             // Legacy: startup test conversation for validating the TCP/server path
