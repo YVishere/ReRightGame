@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEditor;
 using LLama;
 using LLama.Common;
 using Mono.Cecil.Cil;
@@ -17,80 +18,100 @@ class UnityLLM : MonoBehaviour
     public static UnityLLM Instance { get; private set; }
     private static string modelPath = @"Assets\StreamingAssets\Models\models--unsloth--Llama-3.2-1B-Instruct-GGUF\snapshots\b69aef112e9f895e6f98d7ae0949f72ff09aa401\Llama-3.2-1B-Instruct-Q4_K_M.gguf";
 
-    private static ModelParams parameters = new ModelParams(modelPath)
+    public static ModelParams parameters = new ModelParams(modelPath)
     {
         ContextSize = 1024, // The longest length of chat as memory.
         GpuLayerCount = 5 // How many layers to offload to GPU. Please adjust it according to your GPU memory.
     };
 
-    private static LLamaWeights model = LLamaWeights.LoadFromFile(parameters);
-
-    private static LLamaContext context = model.CreateContext(parameters);
-
-    private InteractiveExecutor executor = new InteractiveExecutor(context);
-
-    private ChatHistory chatHistory = new ChatHistory();
-
-    private InferenceParams inferenceParams = new InferenceParams()
-    {
-        MaxTokens = 256, // No more than 256 tokens should appear in answer. Remove it if antiprompt is enough for control.
-        AntiPrompts = new List<string> { "User:" } // Stop generation once antiprompts appear.
-    };
-    private async Task Awake()
+    public static LLamaWeights model = LLamaWeights.LoadFromFile(parameters);
+    private async void Awake()
     {
         Instance = this;
 
-        //Load the model
-        chatHistory.AddMessage(AuthorRole.System, "Transcript of a dialog, where the User interacts with an Assistant named Bob. Bob is helpful, kind, honest, good at writing, and never fails to answer the User's requests immediately and with precision.");
-        chatHistory.AddMessage(AuthorRole.User, "Hello, Bob.");
-        chatHistory.AddMessage(AuthorRole.Assistant, "Hello. How may I help you today?");
-
-        ChatSession session = new(executor, chatHistory);
-        string resp = string.Empty;
-        await foreach (
-            string text 
-            in session.ChatAsync(new ChatHistory.Message(AuthorRole.User, "Can you write a poem about Unity?"), inferenceParams)
-        )
+        if (constData._tcp)
         {
-            resp += text;
-        }
+#pragma warning disable CS0162
+            // Legacy: startup test conversation for validating the TCP/server path
+            var testContext = model.CreateContext(parameters);
+            var testExec = new InteractiveExecutor(testContext);
+            var testHistory = new ChatHistory();
+            var testParams = new InferenceParams { MaxTokens = 256, AntiPrompts = new List<string> { "User:" } };
 
-        UnityEngine.Debug.Log("Response from UnityLLM----------------: " + resp);
-    }
+            testHistory.AddMessage(AuthorRole.System, "Transcript of a dialog, where the User interacts with an Assistant named Bob. Bob is helpful, kind, honest, good at writing, and never fails to answer the User's requests immediately and with precision.");
+            testHistory.AddMessage(AuthorRole.User, "Hello, Bob.");
+            testHistory.AddMessage(AuthorRole.Assistant, "Hello. How may I help you today?");
 
-    // Add UnityLLM specific methods and properties here
-    static LLamaContext freshContext = model.CreateContext(parameters);
-    InteractiveExecutor freshExec = new InteractiveExecutor(freshContext);
-    public async Task<string> talk2LLM(string user)
-    {
-        ChatHistory cH = new ChatHistory();
-
-        cH.AddMessage(AuthorRole.System, "Give yourself a random personality and roleplay them");       
-
-
-        ChatSession session = new(freshExec, cH);
-
-        string resp = string.Empty;
-
-        if (user.Length > 0){
-            await foreach(
+            ChatSession session = new(testExec, testHistory);
+            string resp = string.Empty;
+            await foreach (
                 string text
-                in session.ChatAsync(new ChatHistory.Message(AuthorRole.User, user), inferenceParams)
+                in session.ChatAsync(new ChatHistory.Message(AuthorRole.User, "Can you write a poem about Unity?"), testParams)
             )
             {
                 resp += text;
             }
+            UnityEngine.Debug.Log("Response from UnityLLM----------------: " + resp);
+#pragma warning restore CS0162
         }
         else
         {
-            await foreach(
-                string text
-                in session.ChatAsync(new ChatHistory.Message(AuthorRole.User, "Give yourself a random personality and roleplay them"), inferenceParams)
-            )
+            UnityEngine.Debug.Log("UnityLLM: per-NPC context mode (llama.cpp). Shared model loaded.");
+        }
+    }
+
+    // Legacy: single shared context — TCP mode only
+    public async Task<string> talk2LLM(string user)
+    {
+        if (constData._tcp)
+        {
+#pragma warning disable CS0162
+            var freshContext = model.CreateContext(parameters);
+            var freshExec = new InteractiveExecutor(freshContext);
+            var cH = new ChatHistory();
+            var legacyParams = new InferenceParams { MaxTokens = 256, AntiPrompts = new List<string> { "User:" } };
+            cH.AddMessage(AuthorRole.System, "Give yourself a random personality and roleplay them");
+
+            ChatSession session = new(freshExec, cH);
+            string prompt = user.Length > 0 ? user : "Give yourself a random personality and roleplay them";
+            string resp = string.Empty;
+            await foreach (string text in session.ChatAsync(new ChatHistory.Message(AuthorRole.User, prompt), legacyParams))
             {
                 resp += text;
             }
+            return resp;
+#pragma warning restore CS0162
         }
+        return string.Empty;
+    }
+
+    // Per-NPC context factory — call once per NPC on Start()
+    public static NPCContext CreateNPCContext(GUID npcId, string systemPrompt)
+    {
+        var npcLlamaContext = model.CreateContext(parameters);
+        var executor = new InteractiveExecutor(npcLlamaContext);
+        var history = new ChatHistory();
+        history.AddMessage(AuthorRole.System, systemPrompt);
+        return new NPCContext(
+            npcId,
+            history,
+            executor,
+            new InferenceParams { MaxTokens = 256, AntiPrompts = new List<string> { "User:" } },
+            systemPrompt
+        );
+    }
+
+    // Per-NPC inference — uses the NPC's own context so histories never bleed
+    public async Task<string> talk2LLMWithContext(NPCContext_intf ctx, string user)
+    {
+        ChatSession session = new(ctx.Executor, ctx.History);
+        string prompt = user.Length > 0 ? user : "Hello";
+        string resp = string.Empty;
+        await foreach (string text in session.ChatAsync(new ChatHistory.Message(AuthorRole.User, prompt), ctx.InferenceParams))
+        {
+            resp += text;
+        }
+        ctx.LastAccessed = DateTime.Now;
         return resp;
     }
 }
