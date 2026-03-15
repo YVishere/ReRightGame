@@ -71,3 +71,41 @@ This file is used by agentic models to log analysis, observations, and insights 
 **Recommendations**:
 - `reformatDialog()` could be moved inside the TCP branch body or marked with a comment clarifying it is TCP-only, to avoid confusion for future contributors
 
+---
+
+## 2026-03-15 - GitHub Copilot (Claude Sonnet 4.6) - First-turn prompt bug fix + ChatSession lifetime fix
+
+### Component: LLM_NPCController.cs
+**Observation**: `getDialog()` was sending `userSpeech[^1]` unconditionally on every turn. On the first turn, `dialog.Lines` only contains the system prompt string, so `userSpeech[^1]` resolved to the personality description (e.g. `"You are the first npc in this game who is connected to an LLM"`). This was sent to the model as a *User* message, causing the LLM to respond as if the player had just said that text, producing off-character story-mode output.
+
+**Impact**:
+- First NPC response was completely wrong — model roleplayed the personality description as player input instead of adopting it as its own character
+- Subsequent turns appeared to work but were building on a corrupted conversation start
+
+**Changes Made**:
+- Added first-turn detection: `string userMsg = userSpeech.Count == 1 ? "Hello" : userSpeech[^1];`
+- On first turn (only the system prompt in Lines), a neutral `"Hello"` is sent so the NPC introduces itself naturally from its system prompt
+- All subsequent turns send the actual player text as before
+
+**Recommendations**:
+- If NPCs need a custom opening line instead of a generic greeting, `generatePersonality()` could return a struct with both the system prompt and an optional opening user seed message
+
+---
+
+### Component: NPCContext.cs, NPCContext_intf.cs, UnityLLM.cs (talk2LLMWithContext)
+**Observation**: `talk2LLMWithContext()` was calling `new ChatSession(ctx.Executor, ctx.History)` on every invocation. `LLamaSharp`'s `InteractiveExecutor` maintains a live KV cache after inference. Constructing a new `ChatSession` on top of an existing KV cache caused the full `ChatHistory` to be replayed against the already-advanced cache state. The model then immediately reached the `"User:"` anti-prompt mid-replay and returned `"User:"` as the complete response.
+
+**Impact**:
+- Every response after the first returned the literal string `"User:"` or empty string
+- Conversation appeared to work (no exceptions thrown) but all NPC replies were silent/broken
+- Bug would worsen over time as history grew longer, since each call replayed an ever-larger history over a more advanced cache
+
+**Changes Made**:
+- Added `ChatSession Session { get; set; }` to `NPCContext_intf` interface
+- `NPCContext` constructor now creates `Session = new ChatSession(executor, history)` once at context creation time
+- `talk2LLMWithContext()` updated to call `ctx.Session.ChatAsync(...)` directly — no `ChatSession` instantiation per call
+- `NPCContext.Close()` sets `Session = null` alongside `Executor` and `History`
+
+**Recommendations**:
+- `ChatSession` is stateful and not thread-safe; if concurrent NPC inference is ever needed, each concurrent request would need its own executor/context pair rather than sharing one `NPCContext`
+
