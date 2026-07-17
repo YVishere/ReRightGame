@@ -1,3 +1,5 @@
+using System.IO;
+using System.Runtime.InteropServices;
 using UnityEngine;
 using UnityEditor;
 using LLama;
@@ -18,13 +20,64 @@ class UnityLLM : MonoBehaviour
     public static UnityLLM Instance { get; private set; }
     private static string modelPath = @"Assets\StreamingAssets\Models\models--unsloth--Llama-3.2-1B-Instruct-GGUF\snapshots\b69aef112e9f895e6f98d7ae0949f72ff09aa401\Llama-3.2-1B-Instruct-Q4_K_M.gguf";
 
-    public static ModelParams parameters = new ModelParams(modelPath)
-    {
-        ContextSize = 1024, // The longest length of chat as memory.
-        GpuLayerCount = 5 // How many layers to offload to GPU. Please adjust it according to your GPU memory.
-    };
+    public static ModelParams parameters;
+    public static LLamaWeights model;
 
-    public static LLamaWeights model = LLamaWeights.LoadFromFile(parameters);
+    // Loads llama.dll and all sibling DLLs into the process using
+    // LOAD_WITH_ALTERED_SEARCH_PATH so Windows resolves dependencies
+    // from the DLL's own folder, not the application directory.
+    // This must run before new ModelParams() triggers NativeApi..cctor()
+    // and its DllImport("llama") call.
+    [DllImport("kernel32", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern IntPtr LoadLibraryEx(string lpFileName, IntPtr hFile, uint dwFlags);
+    private const uint LOAD_WITH_ALTERED_SEARCH_PATH = 0x8;
+
+    private static void PreloadBackendDlls()
+    {
+        string packagesPath = Path.Combine(Application.dataPath, "Packages");
+        if (!Directory.Exists(packagesPath)) return;
+
+        // Find llama.dll — whichever backend is installed
+        string? llamaDll = null;
+        foreach (string pkg in Directory.GetDirectories(packagesPath, "LLamaSharp.Backend.*"))
+        {
+            var found = Directory.GetFiles(pkg, "llama.dll", SearchOption.AllDirectories);
+            if (found.Length > 0) { llamaDll = found[0]; break; }
+        }
+        if (llamaDll == null)
+        {
+            Debug.LogError("UnityLLM: No llama.dll found in Assets/Packages.");
+            return;
+        }
+
+        // Load each DLL in dependency order from the same folder.
+        // LOAD_WITH_ALTERED_SEARCH_PATH makes Windows use that folder for all deps.
+        string nativeDir = Path.GetDirectoryName(llamaDll)!;
+        foreach (string name in new[] { "ggml-base.dll", "ggml-cpu.dll", "ggml-cuda.dll", "ggml.dll", "llama.dll" })
+        {
+            string fullPath = Path.Combine(nativeDir, name);
+            if (!File.Exists(fullPath)) continue;
+            IntPtr h = LoadLibraryEx(fullPath, IntPtr.Zero, LOAD_WITH_ALTERED_SEARCH_PATH);
+            if (h == IntPtr.Zero)
+                Debug.LogWarning($"UnityLLM: Failed to preload {name} (error {System.Runtime.InteropServices.Marshal.GetLastWin32Error()})");
+            else
+                Debug.Log($"UnityLLM: Preloaded {name}");
+        }
+    }
+
+    // Static constructor gives explicit control over initialization order.
+    // model/parameters must be initialised before any NPC calls CreateNPCContext().
+    static UnityLLM()
+    {
+        PreloadBackendDlls();
+        parameters = new ModelParams(modelPath)
+        {
+            ContextSize = 1024,
+            GpuLayerCount = -1
+        };
+        model = LLamaWeights.LoadFromFile(parameters);
+    }
+
     private async void Awake()
     {
         Instance = this;

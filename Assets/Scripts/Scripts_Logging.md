@@ -71,4 +71,18 @@ This file is used by agentic models to log analysis, observations, and insights 
 
 <!-- Agentic models: Add your logging entries below this line -->
 
+## 2026-07-16 - GitHub Copilot (Claude Sonnet 4.6) - LLamaSharp Backend Plugin Conflict Fix
+**Component**: UnityEngineHelper/LLamaBackendSetup.cs (NEW)
+**Observation**: NuGetForUnity installs `LLamaSharp.Backend.Cpu` as a transitive dependency of `LLamaSharp.Backend.Cuda12`, causing "Multiple plugins with same name" errors across four AVX subdirectories. Created `LLamaBackendSetup.cs` to automate the fix on every domain reload.
+**Impact**:
+- Eliminates all duplicate-plugin errors from the LLamaSharp multi-AVX Cpu backend
+- Copies missing `ggml-cpu.dll` into the active CUDA12 backend's native folder automatically
+- No manual folder deletion or DLL copying required after NuGet restores
+- Fix is persistent in version control via committed `.meta` files
+**Recommendations**:
+- Commit `.meta` files from `Assets/Packages/LLamaSharp.Backend.Cpu*/` to lock in the disabled-plugin state
+- Run **Tools/Fix LLamaSharp Backend Plugins** after any NuGet restore that regenerates `.meta` files
+
+---
+
 ```
