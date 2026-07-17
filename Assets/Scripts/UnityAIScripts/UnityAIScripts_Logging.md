@@ -11,6 +11,30 @@ This file is used by agentic models to log analysis, observations, and insights 
 
 ---
 
+## 2026-07-16 - Claude Code (Opus 4.8) - README accuracy pass vs current code
+
+### Component: UnityAIScripts/README.md
+**Observation**: Documentation had drifted from the implementation in several concrete places after the persisted-`ChatSession`, CUDA12, and static-constructor changes.
+
+**Changes Made**:
+- **Persisted `ChatSession`**: Documented the new `Session` property on `NPCContext_intf`/`NPCContext` (built once in the constructor, reused every turn to preserve the KV cache). Corrected `talk2LLMWithContext` — it reuses `ctx.Session` rather than building a fresh `ChatSession` each call. Updated the Context Creation Workflow and both Usage Examples (creation now via the `CreateNPCContext` factory; retrieval via `talk2LLMWithContext`).
+- **Startup test gating**: Corrected from `constData._tcp = true` to `constData._llmDebug = true` (the actual guard in `Awake()`).
+- **GPU layers**: Corrected "5 layers offloaded" → `GpuLayerCount = -1` (all layers) in Model Configuration, Performance/VRAM, and troubleshooting.
+- **Static constructor + native preload**: Documented that `static UnityLLM()` runs `PreloadBackendDlls()` (`LoadLibraryEx` + `LOAD_WITH_ALTERED_SEARCH_PATH`) and `LLamaWeights.LoadFromFile()` before any `Awake()`.
+- **Dependencies**: Updated LLamaSharp `0.25.0`/Cpu/AVX512 → `0.27.0` on the CUDA12 backend (Cpu backend restored but disabled via `LLamaBackendSetup.cs`); listed the actual preloaded native DLLs.
+- **`Close()`**: Corrected to reflect nulling `Session`/`Executor`/`History` and setting `LastAccessed = DateTime.MinValue`.
+
+### Component: Assets/Scripts/README.md
+**Observation**: `constData._llmDebug` was undocumented.
+
+**Changes Made**: Added the `_llmDebug` flag to the `constData.cs` entry.
+
+**Impact**: Docs now match `UnityLLM.cs`, `NPCContext.cs`, `NPCContext_intf.cs`, and `constData.cs` as they stand on the `BundledLLM` branch. No code was changed.
+
+**Recommendations**: The pre-existing 2026-01-18 backlog items (LRU eviction, model-load try/catch, ScriptableObject config) remain open and unaddressed by this pass.
+
+---
+
 ## 2026-03-15 - GitHub Copilot (Claude Sonnet 4.6) - Per-NPC Context Implementation
 
 ### Component: UnityLLM.cs

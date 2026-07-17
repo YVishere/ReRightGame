@@ -20,7 +20,8 @@ The game operates on a client-server architecture where Unity (C#) handles game 
 ### constData.cs
 **Compile-time feature flags** controlling which AI backend is active.
 - `_tcp` (`const bool`, default `false`): `false` = llama.cpp in-process via LLamaSharp; `true` = legacy Python TCP server
-- Because the value is a `const`, the compiler dead-code-eliminates the inactive branch — zero runtime overhead
+- `_llmDebug` (`const bool`, default `true`): when `true`, `UnityLLM.Awake()` runs a startup test conversation (Bob prompt) to validate llama.cpp inference; when `false`, it just logs that per-NPC context mode is active
+- Because the values are `const`, the compiler dead-code-eliminates the inactive branch — zero runtime overhead
 - **Rename note**: Previously named `USING_TCP`; renamed to `_tcp` for consistency
 
 ### GameLayers.cs

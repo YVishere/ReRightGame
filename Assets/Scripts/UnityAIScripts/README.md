@@ -20,20 +20,22 @@ This design minimizes memory overhead while maintaining independent conversation
 - **Model Configuration**:
   - Model path: `Llama-3.2-1B-Instruct-Q4_K_M.gguf` (quantized 4-bit model)
   - Context size: 1024 tokens for conversation memory
-  - GPU acceleration: 5 layers offloaded to GPU (configurable based on VRAM)
+  - GPU acceleration: `GpuLayerCount = -1` — offloads **all** model layers to the GPU (CUDA12 backend)
   - Model format: GGUF format from Unsloth optimized for inference
 - **Technical Details**:
   - `model` and `parameters` are **public static** — shared across all NPCs and accessible by the factory
   - No class-level context, executor, or chatHistory fields — all state is per-NPC
-  - Singleton pattern for global LLM service access
+  - Singleton pattern for global LLM service access (`Instance` set in `Awake()`)
   - `Awake()` is `async void` (Unity-compatible)
+  - **Static constructor** `static UnityLLM()` runs `PreloadBackendDlls()` then loads the model — this fixes native init order (see below)
+  - `PreloadBackendDlls()` uses `LoadLibraryEx` with `LOAD_WITH_ALTERED_SEARCH_PATH` to load `llama.dll` and its `ggml-*.dll` siblings from the backend's own folder, so Windows resolves native dependencies correctly **before** LLamaSharp's `NativeApi` static constructor fires
 - **Initialization Process**:
-  - Model file loaded from StreamingAssets at startup
-  - If `constData._tcp = true`: runs a legacy test conversation (Bob prompt) for TCP path validation
-  - If `constData._tcp = false`: logs that per-NPC context mode is active
+  - Native backend DLLs preloaded and `LLamaWeights.LoadFromFile()` run in the **static constructor**, before any `Awake()` — guarantees `model`/`parameters` are ready when NPCs call `CreateNPCContext()`
+  - In `Awake()`, if `constData._llmDebug = true`: runs a startup test conversation (Bob prompt) to validate inference
+  - In `Awake()`, if `constData._llmDebug = false`: logs that per-NPC context mode is active
 - **Public API**:
   - `CreateNPCContext(GUID npcId, string systemPrompt)` — **static factory**: creates a fresh `LLamaContext`, `InteractiveExecutor`, and `ChatHistory` seeded with `systemPrompt`; returns `NPCContext`
-  - `talk2LLMWithContext(NPCContext_intf ctx, string user)` — **per-NPC inference**: builds `ChatSession` from NPC's own executor and history, streams response, updates `LastAccessed`
+  - `talk2LLMWithContext(NPCContext_intf ctx, string user)` — **per-NPC inference**: reuses the persisted `ctx.Session` (built once at context creation) so the `InteractiveExecutor` KV cache is never replayed from scratch; streams the response and updates `LastAccessed`
   - `talk2LLM(string user)` — **legacy, `_tcp` path only**: creates a fresh shared context per call; returns `string.Empty` when `_tcp = false`
 - **Memory Management**:
   - Single model instance reduces RAM usage (vs per-NPC models)
@@ -71,6 +73,7 @@ This design minimizes memory overhead while maintaining independent conversation
   - `NpcId`: GUID identifier linking context to specific NPC
   - `History`: `ChatHistory` object maintaining conversation flow
   - `Executor`: `InteractiveExecutor` for streaming LLM inference
+  - `Session`: `ChatSession` built once over `Executor` + `History` and reused every turn — preserves the KV cache across messages
   - `InferenceParams`: Per-NPC inference configuration (temperature, tokens, etc.)
   - `SystemPrompt`: NPC personality and behavior instructions
   - `LastAccessed`: Timestamp for LRU caching and idle context cleanup
@@ -89,17 +92,19 @@ This design minimizes memory overhead while maintaining independent conversation
   - Unique NPC identifier for context-NPC mapping
   - Complete conversation history with role-based messages
   - Interactive executor instance for streaming responses
+  - `ChatSession` created once in the constructor (`new ChatSession(executor, history)`) and reused every turn
   - Configurable inference parameters per NPC
   - System prompt defining NPC personality and constraints
   - Activity timestamp for cache management
 - **Initialization**:
   - Constructor-based initialization with all required context components
+  - `Session` is instantiated inside the constructor from the passed `executor` + `history`
   - Timestamp set to current time on context creation
   - All properties passed explicitly for clear dependency tracking
 - **Lifecycle Management**:
   - `updateNPC()`: Updates last accessed timestamp for activity tracking
-  - `OnDestroy()`: Unity lifecycle hook for automatic cleanup
-  - `Close()`: Explicit resource disposal with null assignment
+  - `OnDestroy()`: Unity lifecycle hook that calls `Close()`
+  - `Close()`: Nulls `Session`, `Executor`, and `History`, sets `LastAccessed` to `DateTime.MinValue`, and logs closure
   - Debug logging on context closure for monitoring
 - **Technical Details**:
   - Plain interface implementation (no MonoBehaviour dependencies in current design)
@@ -110,20 +115,22 @@ This design minimizes memory overhead while maintaining independent conversation
 ### Technical Implementation
 
 ### Model Loading and Initialization
-The system loads the LLM model once during application startup:
-1. **Path Resolution**: Model file located in StreamingAssets with full snapshot path
-2. **Parameter Configuration**: Context size and GPU layer allocation specified
-3. **Model Loading**: `LLamaWeights.LoadFromFile()` loads quantized GGUF model into memory
-4. **Validation** (TCP path only): Test conversation executed if `constData._tcp = true`
+The system loads the LLM model once in the **static constructor** (`static UnityLLM()`), before any Unity lifecycle method runs:
+1. **Native Preload**: `PreloadBackendDlls()` loads `llama.dll` and its `ggml-*.dll` siblings via `LoadLibraryEx(LOAD_WITH_ALTERED_SEARCH_PATH)` so native dependencies resolve from the backend folder before LLamaSharp's `NativeApi` initializes
+2. **Path Resolution**: Model file located in StreamingAssets with full snapshot path
+3. **Parameter Configuration**: `ContextSize = 1024`, `GpuLayerCount = -1` (offload all layers)
+4. **Model Loading**: `LLamaWeights.LoadFromFile()` loads the quantized GGUF model into memory
+5. **Validation** (debug only): In `Awake()`, a test conversation runs if `constData._llmDebug = true`
 
 ### Context Creation Workflow
 When a new AI NPC starts (`NPCController.Start()`):
 1. `NPCController` calls `UnityLLM.CreateNPCContext(npcID, personalityPrompt)`
 2. Factory creates fresh `LLamaContext` from shared `model`, new `InteractiveExecutor`, and `ChatHistory` seeded with system prompt
-3. `NPCContext` returned and registered in `UnityLLMContextHasher` keyed by NPC GUID
-4. On player message, `LLM_NPCController.getDialog()` retrieves context by GUID and calls `talk2LLMWithContext()`
-5. `ChatSession` is created from the NPC's own executor + history — responses stay fully isolated
-6. On NPC destroy, `NPCController.OnDestroy()` calls `ctx.Close()` to release the `LLamaContext`
+3. The `NPCContext` constructor builds the `ChatSession` **once** from that executor + history
+4. `NPCContext` returned and registered in `UnityLLMContextHasher` keyed by NPC GUID
+5. On player message, `LLM_NPCController.getDialog()` retrieves context by GUID and calls `talk2LLMWithContext()`
+6. Inference streams over the NPC's **persisted** `ctx.Session` — history stays isolated and the KV cache is preserved between turns
+7. On NPC destroy, `NPCController.OnDestroy()` calls `ctx.Close()` to release the `LLamaContext`
 
 ### Context Switching and Management
 The system supports multiple concurrent NPC conversations:
@@ -153,28 +160,14 @@ The AI system integrates with the existing NPC framework:
 
 ### Basic NPC Context Creation
 ```csharp
-// In NPC initialization (e.g., NPCController or NPCInit)
+// In NPC initialization (e.g., NPCController.Start())
 GUID npcId = gameObject.GetComponent<GUID_Generator>().GetGUID();
 
-// Create context with NPC-specific configuration
-var history = new ChatHistory();
-history.AddMessage(AuthorRole.System, "You are a friendly merchant in a medieval fantasy world.");
-
-var inferenceParams = new InferenceParams()
-{
-    MaxTokens = 150,
-    AntiPrompts = new List<string> { "Player:" }
-};
-
-var executor = new InteractiveExecutor(UnityLLM.model.CreateContext(UnityLLM.parameters));
-
-var npcContext = new NPCContext(
-    npcId, 
-    history, 
-    executor, 
-    inferenceParams, 
-    "You are a friendly merchant..."
-);
+// Use the factory — it creates the LLamaContext, InteractiveExecutor,
+// ChatHistory (seeded with the system prompt), and the reusable ChatSession.
+NPCContext npcContext = UnityLLM.CreateNPCContext(
+    npcId,
+    "You are a friendly merchant in a medieval fantasy world.");
 
 // Register context with hasher
 UnityLLMContextHasher.Instance.HashNPC(npcId, npcContext);
@@ -184,19 +177,12 @@ UnityLLMContextHasher.Instance.HashNPC(npcId, npcContext);
 ```csharp
 // In dialog system or interaction handler
 GUID npcId = GetNPCGuid();
-var context = UnityLLMContextHasher.Instance.getNPCContext(npcId);
+NPCContext_intf context = UnityLLMContextHasher.Instance.getNPCContext(npcId);
 
 if (context != null)
 {
-    // Add player message to history
-    context.History.AddMessage(AuthorRole.User, playerInput);
-    
-    // Create chat session and get response
-    var session = new ChatSession(context.Executor, context.History);
-    string response = await GetLLMResponse(session, context.InferenceParams);
-    
-    // Update access timestamp
-    context.LastAccessed = DateTime.Now;
+    // Streams over the persisted ctx.Session and updates LastAccessed internally.
+    string response = await UnityLLM.Instance.talk2LLMWithContext(context, playerInput);
 }
 ```
 
@@ -205,7 +191,7 @@ if (context != null)
 ### Memory Usage
 - **Model Size**: ~1.2GB for Q4_K_M quantized Llama-3.2-1B
 - **Per-Context Overhead**: ~1-5MB per NPC (conversation history + executor)
-- **GPU VRAM**: 5 layers * ~240MB = ~1.2GB GPU memory allocation
+- **GPU VRAM**: `GpuLayerCount = -1` offloads all layers — expect roughly the full ~1.2GB model in VRAM plus KV cache
 - **Total Footprint**: Base model + (NPCs * context overhead)
 
 ### Inference Performance
@@ -271,9 +257,10 @@ if (context != null)
 ## Dependencies
 
 ### LLamaSharp Package
-- **Version**: 0.25.0 (LLamaSharp.Backend.Cpu)
+- **Version**: 0.27.0
+- **Active Backend**: `LLamaSharp.Backend.Cuda12` (Windows). `LLamaSharp.Backend.Cpu` is restored as a transitive dependency but its plugins are disabled — see `UnityEngineHelper/LLamaBackendSetup.cs`
 - **Purpose**: .NET bindings for llama.cpp inference engine
-- **Native Libraries**: ggml.dll, llama.dll (AVX512 optimized)
+- **Native Libraries**: `llama.dll`, `ggml.dll`, `ggml-base.dll`, `ggml-cpu.dll`, `ggml-cuda.dll` (preloaded via `LoadLibraryEx` in `UnityLLM.PreloadBackendDlls()`)
 - **Model Format**: GGUF (standardized quantized model format)
 
 ### Unity Packages
@@ -296,9 +283,10 @@ if (context != null)
 - Ensure sufficient RAM available (minimum 4GB free recommended)
 
 **GPU Acceleration Not Working**
-- Verify AVX512 DLL plugins are enabled in Unity plugin settings
-- Check GPU compatibility (CUDA for NVIDIA, ROCm for AMD)
-- Reduce `GpuLayerCount` if VRAM insufficient
+- Verify the CUDA12 backend plugins are enabled and the Cpu backend is disabled (run **Tools/Fix LLamaSharp Backend Plugins** — see `LLamaBackendSetup.cs`)
+- Confirm `ggml-cuda.dll` is present in the active backend's native folder and was preloaded (check for the `UnityLLM: Preloaded ggml-cuda.dll` log line)
+- Check GPU compatibility (CUDA 12 for NVIDIA)
+- Reduce `GpuLayerCount` from `-1` to a fixed count if VRAM is insufficient
 
 **Context Not Found**
 - Ensure `HashNPC()` called during NPC initialization before first interaction

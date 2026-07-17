@@ -1,6 +1,7 @@
 using UnityEngine;
 using LLama;
 using LLama.Common;
+using LLama.Transformers;
 using System;
 using UnityEditor;
 
@@ -20,6 +21,10 @@ public class NPCContext : NPCContext_intf
         History = history;
         Executor = executor;
         Session = new ChatSession(executor, history); // created once; reused every turn
+        Session.WithHistoryTransform(new PromptTemplateTransformer(UnityLLM.model, withAssistant: true));
+        Session.WithOutputTransform(new LLamaTransforms.KeywordTextOutputStreamTransform(
+                                                new[] { "User:", "Assistant:", "Player:", "Server:", "<|eot_id|>", "<|start_header_id|>" },
+                                                redundancyLength: 8));
         InferenceParams = inferenceParams;
         SystemPrompt = systemPrompt;
         LastAccessed = DateTime.Now;

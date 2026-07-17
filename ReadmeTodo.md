@@ -37,6 +37,30 @@ How these changes will improve documentation quality and user understanding.
 
 <!-- Move completed items here with completion timestamp -->
 
+## 2026-07-16 - Claude Code (Opus 4.8) - UnityAIScripts README accuracy pass
+
+**README Files Modified**:
+- `Assets/Scripts/UnityAIScripts/README.md`
+- `Assets/Scripts/README.md`
+- `Assets/Scripts/UnityAIScripts/UnityAIScripts_Logging.md`
+
+**Modification Type**: Correction
+
+**Reason**: Documentation had drifted from the code after the persisted-`ChatSession`, CUDA12 backend, and static-constructor / native-DLL-preload changes.
+
+**Changes**:
+1. Documented the persisted `Session` property and corrected `talk2LLMWithContext`, the Context Creation Workflow, and both Usage Examples (factory-based creation, session reuse)
+2. Fixed startup-test gating (`_llmDebug`, not `_tcp`) and documented the previously-undocumented `_llmDebug` flag in `Assets/Scripts/README.md`
+3. Corrected GPU config (`GpuLayerCount = -1`, all layers) across Model Configuration, Performance, and troubleshooting
+4. Documented the static constructor + `PreloadBackendDlls()` native init path
+5. Updated dependency section to LLamaSharp 0.27.0 / CUDA12 backend (Cpu disabled via `LLamaBackendSetup.cs`)
+
+**Impact Assessment**: README now matches the shipped code on `BundledLLM`, removing misleading guidance (e.g. per-call `ChatSession` creation, AVX512/Cpu backend, 5-layer GPU offload).
+
+**Priority**: Medium
+
+-----------------
+
 ## 2026-03-15 - GitHub Copilot (Claude Sonnet 4.6) - llama.cpp migration + per-NPC context
 
 **README Files Modified**:

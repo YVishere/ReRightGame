@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEditor;
 using LLama;
 using LLama.Common;
+using LLama.Sampling;
 using Mono.Cecil.Cil;
 using UnityEditor.Rendering.LookDev;
 using System.Collections.Generic;
@@ -89,7 +90,15 @@ class UnityLLM : MonoBehaviour
             var testContext = model.CreateContext(parameters);
             var testExec = new InteractiveExecutor(testContext);
             var testHistory = new ChatHistory();
-            var testParams = new InferenceParams { MaxTokens = 256, AntiPrompts = new List<string> { "User:" } };
+
+            var samplingPipeline = new DefaultSamplingPipeline {
+                                                        Temperature = 0.7f,
+                                                        RepeatPenalty = 1.15f,
+                                                        TopP = 0.9f,
+                                                    };
+
+            var antiPrompts = new List<string> { "<|eot_id|>", "User:", "Player:" };
+            var testParams = new InferenceParams { MaxTokens = 256, AntiPrompts = antiPrompts, SamplingPipeline = samplingPipeline};
 
             testHistory.AddMessage(AuthorRole.System, "Transcript of a dialog, where the User interacts with an Assistant named Bob. Bob is helpful, kind, honest, good at writing, and never fails to answer the User's requests immediately and with precision.");
             testHistory.AddMessage(AuthorRole.User, "Hello, Bob.");
