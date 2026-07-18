@@ -188,6 +188,7 @@ class UnityLLM : MonoBehaviour
             npcId,
             history,
             executor,
+            session,
             new InferenceParams { MaxTokens = constData._USER_LLM_OUTPUT_TOKEN_LIM, 
                                     TokensKeep = tokensKeep, 
                                     AntiPrompts = antiPrompts,
