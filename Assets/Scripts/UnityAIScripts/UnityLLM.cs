@@ -14,6 +14,9 @@ using System.Runtime.CompilerServices;
 using Unity.VisualScripting;
 using Unity.VectorGraphics.Editor;
 using UnityEngine.UI;
+using System.Text;
+using LLama.Transformers;
+using UnityEditor.Rendering;
 
 // Unity Script to act as a single point of truth for LLM model and context
 class UnityLLM : MonoBehaviour
@@ -21,6 +24,8 @@ class UnityLLM : MonoBehaviour
     public static UnityLLM Instance { get; private set; }
     private static string modelPath = @"Assets\StreamingAssets\Models\models--unsloth--Llama-3.2-1B-Instruct-GGUF\snapshots\b69aef112e9f895e6f98d7ae0949f72ff09aa401\Llama-3.2-1B-Instruct-Q4_K_M.gguf";
 
+    public static bool modelFailedToLoad {get; private set;}
+    public static bool modelFailedToRespond {get; private set;}
     public static ModelParams parameters;
     public static LLamaWeights model;
 
@@ -73,15 +78,28 @@ class UnityLLM : MonoBehaviour
         PreloadBackendDlls();
         parameters = new ModelParams(modelPath)
         {
-            ContextSize = 1024,
-            GpuLayerCount = -1
+            ContextSize = constData._LLM_CONTEXT_SIZE_TOKENS,
+            GpuLayerCount = constData._LLM_NUM_GPU_LAYERS
         };
-        model = LLamaWeights.LoadFromFile(parameters);
+
+        try
+        {
+            model = LLamaWeights.LoadFromFile(parameters);
+            modelFailedToLoad = false;
+        }
+        catch (Exception e)
+        {
+            modelFailedToLoad = true;
+            Debug.Log("Failed to load model weights. Saw error: " + e.Message + " Exiting now...");
+            Application.Quit();
+        }
     }
 
     private async void Awake()
     {
         Instance = this;
+        modelFailedToLoad = false;
+        modelFailedToRespond = false;
 
         if (constData._llmDebug)
         {
@@ -98,7 +116,7 @@ class UnityLLM : MonoBehaviour
                                                     };
 
             var antiPrompts = new List<string> { "<|eot_id|>", "User:", "Player:" };
-            var testParams = new InferenceParams { MaxTokens = 256, AntiPrompts = antiPrompts, SamplingPipeline = samplingPipeline};
+            var testParams = new InferenceParams { MaxTokens = constData._LLM_MAX_TOKENS_GENERATED, AntiPrompts = antiPrompts, SamplingPipeline = samplingPipeline};
 
             testHistory.AddMessage(AuthorRole.System, "Transcript of a dialog, where the User interacts with an Assistant named Bob. Bob is helpful, kind, honest, good at writing, and never fails to answer the User's requests immediately and with precision.");
             testHistory.AddMessage(AuthorRole.User, "Hello, Bob.");
@@ -152,15 +170,32 @@ class UnityLLM : MonoBehaviour
     // Per-NPC context factory — call once per NPC on Start()
     public static NPCContext CreateNPCContext(GUID npcId, string systemPrompt)
     {
+        var outputStreamHeaders = new List<string> { "User:", "Player:", "Assistant:", "Server:", "<|eot_id|>", "<|start_header_id|>" };
         var npcLlamaContext = model.CreateContext(parameters);
         var executor = new InteractiveExecutor(npcLlamaContext);
+        var antiPrompts = new List<string> { "<|eot_id|>", "User:", "Player:" };
+        int tokensKeep = UnityLLM.model.NativeHandle.Tokenize(systemPrompt, true, false, Encoding.UTF8).Length;
         var history = new ChatHistory();
         history.AddMessage(AuthorRole.System, systemPrompt);
+        var session = new ChatSession(executor, history);
+        session.WithHistoryTransform(new PromptTemplateTransformer(UnityLLM.model, withAssistant: true));
+        
+        session.WithOutputTransform(new LLamaTransforms.KeywordTextOutputStreamTransform (
+            outputStreamHeaders, redundancyLength: constData._LLM_FILTER_BUFFER_NUM_CHARS
+        ));
+
         return new NPCContext(
             npcId,
             history,
             executor,
-            new InferenceParams { MaxTokens = 256, AntiPrompts = new List<string> { "User:" } },
+            new InferenceParams { MaxTokens = constData._USER_LLM_OUTPUT_TOKEN_LIM, 
+                                    TokensKeep = tokensKeep, 
+                                    AntiPrompts = antiPrompts,
+                                    SamplingPipeline = new DefaultSamplingPipeline{Temperature = constData._NPC_LLM_TEMPERATURE, 
+                                                                                    RepeatPenalty = constData. _NPC_LLM_REPEAT_PENALTY,
+                                                                                    TopP = constData._NPC_LLM_NUCLEAS_SAMPLING
+                                                                                },
+                                },
             systemPrompt
         );
     }
@@ -171,11 +206,31 @@ class UnityLLM : MonoBehaviour
     {
         string prompt = user.Length > 0 ? user : "Hello";
         string resp = string.Empty;
-        await foreach (string text in ctx.Session.ChatAsync(new ChatHistory.Message(AuthorRole.User, prompt), ctx.InferenceParams))
+        try
         {
-            resp += text;
+            await foreach (string text in ctx.Session.ChatAsync(new ChatHistory.Message(AuthorRole.User, prompt), ctx.InferenceParams))
+            {
+                resp += text;
+            }
+
+            modelFailedToRespond = false;
+        }
+        catch (Exception e)
+        {
+            Debug.Log("Model failed to log. Error message: " + e.Message);
+            modelFailedToRespond = true;
         }
         ctx.LastAccessed = DateTime.Now;
         return resp;
+    }
+
+    public static async Task<string> Summarize(string conversationText, int maxWords)
+    {
+        var ctx  = model.CreateContext(parameters);
+        var exec = new StatelessExecutor(model, parameters);
+        string prompt = $"Compress this conversation to <= {maxWords} words. Keep facts about the player and the NPC's stance. Drop pleasantries.\n\n{conversationText}";
+        string outp = "";
+        await foreach (var t in exec.InferAsync(prompt, new InferenceParams { MaxTokens = 128 })) outp += t;
+        return outp;
     }
 }
