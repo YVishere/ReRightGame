@@ -14,8 +14,15 @@ The game operates on a client-server architecture where Unity (C#) handles game 
 - Delegates update calls to appropriate controllers based on current state
 - Handles transitions between free exploration and conversation modes
 - Integrates with DialogManager for seamless UI state management
-- **Required Component**: Must have AuthManager component attached for IPC authentication
+- **Required Component**: Must have AuthManager component attached for IPC authentication (TCP path only)
 - Coordinates with AuthManager for secure AI server communication
+
+### constData.cs
+**Compile-time feature flags** controlling which AI backend is active.
+- `_tcp` (`const bool`, default `false`): `false` = llama.cpp in-process via LLamaSharp; `true` = legacy Python TCP server
+- `_llmDebug` (`const bool`, default `true`): when `true`, `UnityLLM.Awake()` runs a startup test conversation (Bob prompt) to validate llama.cpp inference; when `false`, it just logs that per-NPC context mode is active
+- Because the values are `const`, the compiler dead-code-eliminates the inactive branch — zero runtime overhead
+- **Rename note**: Previously named `USING_TCP`; renamed to `_tcp` for consistency
 
 ### GameLayers.cs
 **Unity layer management system** providing centralized access to collision layers.
@@ -25,12 +32,12 @@ The game operates on a client-server architecture where Unity (C#) handles game 
 - Critical for movement validation and interaction detection
 
 ### Hasher.cs
-**Connection management system** for AI NPC network connections.
+**TCP connection management system** for AI NPC network connections (legacy `_tcp` path).
 - Maintains hash table mapping NPC GUIDs to TCP connections (`Dictionary<GUID, ConnectionInfo>`)
+- Only used when `constData._tcp = true`; the llama.cpp path uses `UnityLLMContextHasher` instead
 - Singleton pattern for global connection access
 - Handles connection lifecycle management and cleanup
 - Provides connection validation and retrieval methods
-- Essential for multi-NPC AI communication architecture
 
 ### ConnectionInfo.cs
 **Network connection wrapper** encapsulating TCP client and stream management.
@@ -86,12 +93,13 @@ The game operates on a client-server architecture where Unity (C#) handles game 
 - Physics-based game mechanics
 
 ### `/ServerFiles`
-**Network communication layer** for Unity-Python integration with mandatory IPC authentication.
+**Network communication layer** for Unity-Python integration with mandatory IPC authentication. Used only when `constData._tcp = true`.
 - Socket client implementation for AI communication with token-based authentication
 - Connection management and request handling with authentication handshakes
 - Protocol definition for AI service communication with session validation
 - **Authentication Required**: All connections must authenticate via AuthManager IPC system
 - Supports secure multi-NPC concurrent connections with individual session tokens
+- **Legacy path**: Primary inference now handled by `/UnityAIScripts` via LLamaSharp
 
 ### `/ServerFiles-API`
 **Extended API communication** for additional server functionality.
@@ -99,16 +107,20 @@ The game operates on a client-server architecture where Unity (C#) handles game 
 - Extended server communication protocols
 - Additional network service integrations
 
+### `/UnityAIScripts`
+**In-process LLM integration** using LLamaSharp (llama.cpp). Active when `constData._tcp = false` (default).
+- `UnityLLM`: singleton model manager; exposes `CreateNPCContext()` factory and `talk2LLMWithContext()` inference
+- `UnityLLMContextHasher`: GUID-keyed dictionary of per-NPC `LLamaContext` instances
+- `NPCContext` / `NPCContext_intf`: plain C# data container for per-NPC conversation state
+
 ### `/UnityEngineHelper`
 **Unity Editor integration utilities** for development workflow enhancement.
 - Domain reload management and resource cleanup
 - Editor-specific development tools and utilities
 - Development-time workflow support and debugging tools
-- **DomainReloadHelper**: Prevents editor hanging during assembly reloads by managing IPC and network resource cleanup
+- **DomainReloadHelper**: Prevents editor hanging during assembly reloads by managing IPC and network resource cleanup; TCP cleanup only runs when `constData._tcp = true`
 
 ## Technical Design Patterns
-
-### Singleton Pattern
 Multiple systems use singleton pattern for global access:
 - `GameLayers` for collision layer management
 - `Hasher` for connection management

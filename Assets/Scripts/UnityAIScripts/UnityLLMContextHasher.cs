@@ -4,11 +4,13 @@ using System.Net.Sockets;
 using Unity.VisualScripting;
 using UnityEditor;
 using UnityEngine;
+using LLama;
+using LLama.Common;
 
-public class Hasher : MonoBehaviour
+public class UnityLLMContextHasher : MonoBehaviour
 {
-    private Dictionary<GUID, ConnectionInfo> npcHash = new Dictionary<GUID, ConnectionInfo>();
-    public static Hasher Instance { get; private set; }
+    private Dictionary<GUID, NPCContext_intf> npcContext= new Dictionary<GUID, NPCContext_intf>();
+    public static UnityLLMContextHasher Instance { get; private set; }
     private bool applicationOver = false;
     public void Awake()
     {
@@ -16,28 +18,28 @@ public class Hasher : MonoBehaviour
     }
 
     public bool containsNPC(GUID npcID){
-        return npcHash.ContainsKey(npcID);
+        return npcContext.ContainsKey(npcID);
     }   
 
-    public ConnectionInfo getNPCConnection(GUID npcID){
+    public NPCContext_intf getNPCContext(GUID npcID){
         
         if(containsNPC(npcID)){
-            return npcHash[npcID];
+            return npcContext[npcID];
         }
         return null;
     }
 
     private void displayHashedNPCs(){
-        foreach (KeyValuePair<GUID, ConnectionInfo> kvp in npcHash){
-            Debug.Log("Key: " + kvp.Key + " Value: " + kvp.Value.IsConnected);
+        foreach (KeyValuePair<GUID, NPCContext_intf> kvp in npcContext){
+            Debug.Log("Key: " + kvp.Key + " Value: " + kvp.Value.SystemPrompt);
         }
     }
 
     void OnApplicationQuit(){
-        foreach (KeyValuePair<GUID, ConnectionInfo> kvp in npcHash){
+        foreach (KeyValuePair<GUID, NPCContext_intf> kvp in npcContext){
             kvp.Value.Close();
         }
-        npcHash.Clear();
+        npcContext.Clear();
         applicationOver = true;
         Debug.Log("Hasher cleared");
     }
@@ -46,32 +48,27 @@ public class Hasher : MonoBehaviour
     // {
     // }
 
-    public bool HashNPC(GUID npcID, TcpClient clientID)
+    public bool HashNPC(GUID npcID, NPCContext_intf npcContextEntry)
     {
         //Establish connection and then hash the NPC with clientID
         if (applicationOver || this == null || gameObject == null)
         {
-            if (npcHash.Count != 0)
+            if (npcContext.Count != 0)
             {
-                foreach (KeyValuePair<GUID, ConnectionInfo> kvp in npcHash)
+                foreach (KeyValuePair<GUID, NPCContext_intf> kvp in npcContext)
                 {
                     kvp.Value.Close();
                 }
-                npcHash.Clear();
+                npcContext.Clear();
             }
             return false; // Application is quitting or object is destroyed
         }
         if (!containsNPC(npcID))
         {
             Debug.Log("Hashing NPC with ID: " + npcID);
-            Debug.Log("Client connected: " + clientID.Connected);
-            var connInfo = new ConnectionInfo
-            {
-                Client = clientID,
-                Stream = clientID.Connected ? clientID.GetStream() : null
-            };
+            Debug.Log("Client hashed with NPC context: " + npcContextEntry.SystemPrompt);
 
-            npcHash[npcID] = connInfo;
+            npcContext[npcID] = npcContextEntry;
             return true;
         }
         return false;

@@ -32,10 +32,26 @@ public class LLM_NPCController : MonoBehaviour
     }
 
     public async Task<string> getDialog(List<string> userSpeech, GUID npcID){
-        Debug.Log("Still connected to NPC: " + Hasher.Instance.getNPCConnection(npcID).Client.Connected);
-        string conversation = reformatDialog(userSpeech);
         try{
-            string dialog = await ServerSocketC.Instance.NPCRequest(conversation, Hasher.Instance.getNPCConnection(npcID).Client, Hasher.Instance.getNPCConnection(npcID).Stream);
+            string dialog;
+            if (constData._tcp)
+            {
+                Debug.Log("Still connected to NPC: " + Hasher.Instance.getNPCConnection(npcID).Client.Connected);
+                string conversation = reformatDialog(userSpeech);
+                Debug.Log("Sending to TCP server ----------- " + conversation);
+                dialog = await ServerSocketC.Instance.NPCRequest(conversation, Hasher.Instance.getNPCConnection(npcID).Client, Hasher.Instance.getNPCConnection(npcID).Stream);
+            }
+            else
+            {
+                NPCContext_intf ctx = UnityLLMContextHasher.Instance.getNPCContext(npcID);
+                // On the very first turn dialog.Lines = [systemPrompt] only.
+                // Sending the system prompt as a User message confuses the model;
+                // use a neutral opener so the NPC introduces itself from its personality.
+                string userMsg = userSpeech.Count == 1 ? "Hello" : userSpeech[^1];
+                Debug.Log("Sending to LLM ----------- " + userMsg);
+                dialog = await UnityLLM.Instance.talk2LLMWithContext(ctx, userMsg);
+            }
+            Debug.Log("Got back from LLM --------- " + dialog);
             return dialog;
         }catch (System.Exception e){
             Debug.Log(e.Message);

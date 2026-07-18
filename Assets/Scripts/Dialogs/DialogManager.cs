@@ -30,6 +30,7 @@ public class DialogManager : MonoBehaviour
     public bool isShowing { get; private set; }
     private void Awake(){
         Instance = this;
+        userInput.characterLimit = constData._USER_LLM_INPUT_CHAR_LIM;
     }
 
     public void HandleUpdate(){

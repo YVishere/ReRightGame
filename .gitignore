@@ -1,6 +1,7 @@
 *
 
 !.gitignore
+!ignore.conf
 !*.md
 
 !Packages/
@@ -19,6 +20,9 @@
 
 !Assets/Animation/
 !Assets/Animation/**
+
+!Assets/StreamingAssets/
+!Assets/StreamingAssets/Models/
 
 !PythonFiles/
 !PythonFiles/**

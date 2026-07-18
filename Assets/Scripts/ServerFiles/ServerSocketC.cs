@@ -23,7 +23,9 @@ public class ServerSocketC : MonoBehaviour
     }
     
     private void Start(){
-        StartCoroutine(startSteps());       
+        if (constData._tcp){
+            StartCoroutine(startSteps());   
+        }    
     }
 
     private IEnumerator startSteps(int retries = 3)
@@ -53,8 +55,10 @@ public class ServerSocketC : MonoBehaviour
     // }
 
     void OnApplicationQuit(){
-        stopRetrying = true;
-        stopPythonServer();
+        if (constData._tcp) {
+            stopRetrying = true;
+            stopPythonServer();
+        }
     }
 
     void startPythonServer(){
@@ -67,7 +71,7 @@ public class ServerSocketC : MonoBehaviour
             pythonServerProcess.StartInfo.Arguments = $"ServerSocketPython.py --auth-pipe \"{pipeName}\"";
 
             //Somehow unity messes up same directory files so this line is important
-            pythonServerProcess.StartInfo.WorkingDirectory = System.IO.Path.Combine(Application.dataPath, "Scripts/ServerFiles");
+            pythonServerProcess.StartInfo.WorkingDirectory = @"Assets\Scripts\ServerFiles";
 
             pythonServerProcess.StartInfo.CreateNoWindow = true;
             pythonServerProcess.StartInfo.UseShellExecute = false;

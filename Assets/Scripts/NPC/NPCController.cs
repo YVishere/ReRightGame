@@ -17,7 +17,7 @@ public class NPCController : MonoBehaviour, Interactable_intf
 
     public enum NPCState { Idle, Walking, Speaking }
     CharacterMove charMove;
-
+    
     NPCState state;
     float idleTimer = 0f;
     int currentPattern = 0;
@@ -33,6 +33,7 @@ public class NPCController : MonoBehaviour, Interactable_intf
     public GUID npcID { get; private set; }
 
     private bool stopRetrying = false;
+    private string npcPersonality;
 
     public void Interact(Transform initiator)
     {
@@ -80,8 +81,9 @@ public class NPCController : MonoBehaviour, Interactable_intf
 
     private void dialogBecomesContext()
     {
+        npcPersonality = LLM_NPCController.Instance.generatePersonality(ogAI);
         dialog = new Dialog();
-        dialog.initFirst(LLM_NPCController.Instance.generatePersonality(ogAI));
+        dialog.initFirst(npcPersonality);
     }
 
     private void Awake()
@@ -99,7 +101,17 @@ public class NPCController : MonoBehaviour, Interactable_intf
         {
             isAI = true;
             dialogBecomesContext();
-            establishAndStoreConnection();
+            if (constData._tcp)
+            {
+#pragma warning disable CS0162
+                _ = establishAndStoreConnection();
+#pragma warning restore CS0162
+            }
+            else
+            {
+                NPCContext ctx = UnityLLM.CreateNPCContext(npcID, npcPersonality);
+                UnityLLMContextHasher.Instance.HashNPC(npcID, ctx);
+            }
         }
 
     }
@@ -158,8 +170,18 @@ public class NPCController : MonoBehaviour, Interactable_intf
 
         if (isAI)
         {
-            Debug.Log("NPCController: OnDestroy - Stopping NPC connection");
-            stopRetrying = true;
+            if (constData._tcp)
+            {
+#pragma warning disable CS0162
+                Debug.Log("NPCController: OnDestroy - Stopping NPC connection");
+                stopRetrying = true;
+#pragma warning restore CS0162
+            }
+            else
+            {
+                UnityLLMContextHasher.Instance.getNPCContext(npcID)?.Close();
+                Debug.Log("NPCController: OnDestroy - Closed NPC llama.cpp context");
+            }
         }
     }
 }
